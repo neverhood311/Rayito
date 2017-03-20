@@ -1,0 +1,10 @@
+# Blender v2.78 (sub 0) OBJ File: 'bidirectional_cornell_box.blend'
+# www.blender.org
+o box_green_Cube.003
+v 3.130167 -3.130167 -3.130167
+v 3.130167 3.130167 -3.130167
+v -0.870781 -3.130167 -3.130167
+v -0.870781 3.130167 -3.130167
+vn 0.0000 0.0000 1.0000
+s off
+f 3//1 1//1 2//1 4//1
