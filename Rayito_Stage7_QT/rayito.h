@@ -121,7 +121,7 @@ struct SamplerContainer
     std::vector<Sampler*> m_lightSelectionSamplers; //pick a light
     std::vector<Sampler*> m_lightElementSamplers;   //pick an element within the light
     std::vector<Sampler*> m_lightSamplers;          //pick a point within the element
-    std::vector<Sampler*> m_brdfSamplers;
+    std::vector<Sampler*> m_bsdfSamplers;
     
     unsigned int m_numLightSamples;
     unsigned int m_maxRayDepth; //the same for the eye path and the light path
