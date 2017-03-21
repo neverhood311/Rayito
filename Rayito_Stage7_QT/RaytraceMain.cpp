@@ -516,8 +516,8 @@ Color BDpathTrace(const Ray& ray,
     // The last intersection on the eye path
     Intersection lastEyeIntersection;
 
-    // The last Brdf on the eye path
-    Brdf* pLastEyeBrdf;
+    // The last Bsdf on the eye path
+    Bsdf* pLastEyeBsdf;
 
     // Start with the initial ray from the camera
     Ray currentRay = ray;
@@ -542,7 +542,7 @@ Color BDpathTrace(const Ray& ray,
         // Add in emission when directly visible or via perfect specular bounces
         // (Note that we stop including it through any non-Dirac bounce to
         // prevent caustic noise.)
-        if (numBounces == 0 || numBounces == numDiracBounces)
+        if (true || numBounces == 0 || numBounces == numDiracBounces)
         {
             result += throughputEye * intersection.m_pMaterial->emittance();
         }
@@ -551,26 +551,26 @@ Color BDpathTrace(const Ray& ray,
         Point position = intersection.position();
         Vector normal = intersection.m_normal;
         Vector outgoing = -currentRay.m_direction;
-        Brdf* pBrdf = NULL;
-        float brdfWeight = 1.0f;
+        Bsdf* pBsdf = NULL;
+        float bsdfWeight = 1.0f;
         Color matColor = intersection.m_pMaterial->evaluate(position,
                                                             normal,
                                                             outgoing,
-                                                            pBrdf,
-                                                            brdfWeight);
-        // No BRDF?  We can't evaluate lighting, so bail.
-        if (pBrdf == NULL)
+                                                            pBsdf,
+                                                            bsdfWeight);
+        // No BSDF?  We can't evaluate lighting, so bail.
+        if (pBsdf == NULL)
         {
             return result;
         }
 
         // Copy this intersection
         lastEyeIntersection = intersection; //TODO: make sure this is a deep copy
-        //copy the last valid Brdf encountered
-        pLastEyeBrdf = pBrdf;
+        //copy the last valid Bsdf encountered
+        pLastEyeBsdf = pBsdf;
 
         // Was this a perfect specular bounce?
-        lastBounceDiracDistribution = pBrdf->isDiracDistribution();
+        lastBounceDiracDistribution = pBsdf->isDiracDistribution();
         if (lastBounceDiracDistribution)
             numDiracBounces++;
 
@@ -582,19 +582,19 @@ Color BDpathTrace(const Ray& ray,
             float lightSelectionWeight = float(lights.size()) / samplers.m_numLightSamples;
             for (size_t lightSampleIndex = 0; lightSampleIndex < samplers.m_numLightSamples; ++lightSampleIndex)
             {
-                // Sample lights using MIS between the light and the BRDF.
+                // Sample lights using MIS between the light and the BSDF.
                 // This means we ask the light for a direction, and the likelihood
                 // of having sampled that direction (the PDF).  Then we ask the
-                // BRDF what it thinks of that direction (its PDF), and weight
+                // BSDF what it thinks of that direction (its PDF), and weight
                 // the light sample with MIS.
                 //
-                // Then, we ask the BRDF for a direction, and the likelihood of
+                // Then, we ask the BSDF for a direction, and the likelihood of
                 // having sampled that direction (the PDF).  Then we ask the
                 // light what it thinks of that direction (its PDF, and whether
                 // that direction even runs into the light at all), and weight
-                // the BRDF sample with MIS.
+                // the BSDF sample with MIS.
                 //
-                // By doing both samples and asking both the BRDF and light for
+                // By doing both samples and asking both the BSDF and light for
                 // their PDF for each one, we can combine the strengths of both
                 // sampling methods and get the best of both worlds.  It does
                 // cost an extra shadow ray and evaluation, though, but it is
@@ -630,12 +630,12 @@ Color BDpathTrace(const Ray& ray,
                     // Ask the BRDF what it thinks of this light position (for MIS)
                     Vector lightIncoming = position - lightPoint;
                     float lightDistance = lightIncoming.normalize();
-                    float brdfPdf = 0.0f;
-                    float brdfResult = pBrdf->evaluateSA(lightIncoming,
+                    float bsdfPdf = 0.0f;
+                    float bsdfResult = pBsdf->evaluateSA(lightIncoming,
                                                          outgoing,
                                                          normal,
-                                                         brdfPdf);
-                    if (brdfResult > 0.0f && brdfPdf > 0.0f)
+                                                         bsdfPdf);
+                    if (bsdfResult > 0.0f && bsdfPdf > 0.0f)
                     {
                         // Fire a shadow ray to make sure we can actually see the light position
                         Ray shadowRay(position, -lightIncoming, lightDistance - kRayTMin, ray.m_time);
@@ -643,30 +643,30 @@ Color BDpathTrace(const Ray& ray,
                         {
                             // The light point is visible, so let's add that
                             // contribution (mixed by MIS)
-                            float misWeightLight = powerHeuristic(1, lightPdf, 1, brdfPdf);
+                            float misWeightLight = powerHeuristic(1, lightPdf, 1, bsdfPdf);
                             lightResult += pLightShape->emitted() *
                                            intersection.m_colorModifier * matColor *
-                                           brdfResult *
+                                           bsdfResult *
                                            std::fabs(dot(-lightIncoming, normal)) *
-                                           misWeightLight / (lightPdf * brdfWeight);
+                                           misWeightLight / (lightPdf * bsdfWeight);
                         }
                     }
                 }
 
-                // Ask the BRDF for a sample direction
+                // Ask the BSDF for a sample direction
                 float bsu, bsv;
-                samplers.m_brdfSamplers[numBounces]->sample2D(finalLightSampleIndex, bsu, bsv);
-                Vector brdfIncoming;
-                float brdfPdf = 0.0f;
-                float brdfResult = pBrdf->sampleSA(brdfIncoming,
+                samplers.m_bsdfSamplers[numBounces]->sample2D(finalLightSampleIndex, bsu, bsv);
+                Vector bsdfIncoming;
+                float bsdfPdf = 0.0f;
+                float bsdfResult = pBsdf->sampleSA(bsdfIncoming,
                                                    outgoing,
                                                    normal,
                                                    bsu,
                                                    bsv,
-                                                   brdfPdf);
-                if (brdfPdf > 0.0f && brdfResult > 0.0f)
+                                                   bsdfPdf);
+                if (bsdfPdf > 0.0f && bsdfResult > 0.0f)
                 {
-                    Intersection shadowIntersection(Ray(position, -brdfIncoming, kRayTMax, ray.m_time));
+                    Intersection shadowIntersection(Ray(position, -bsdfIncoming, kRayTMax, ray.m_time));
                     bool intersected = scene.intersect(shadowIntersection);
                     if (intersected && shadowIntersection.m_pShape == pLightShape)
                     {
@@ -674,13 +674,13 @@ Color BDpathTrace(const Ray& ray,
                         lightPdf = pLightShape->intersectPdf(shadowIntersection);
                         if (lightPdf > 0.0f)
                         {
-                            // BRDF chose the light, so let's add that
+                            // BSDF chose the light, so let's add that
                             // contribution (mixed by MIS)
-                            float misWeightBrdf = powerHeuristic(1, brdfPdf, 1, lightPdf);
+                            float misWeightBsdf = powerHeuristic(1, bsdfPdf, 1, lightPdf);
                             lightResult += pLightShape->emitted() *
-                                           intersection.m_colorModifier * matColor * brdfResult *
-                                           std::fabs(dot(-brdfIncoming, normal)) * misWeightBrdf /
-                                           (brdfPdf * brdfWeight);
+                                           intersection.m_colorModifier * matColor * bsdfResult *
+                                           std::fabs(dot(-bsdfIncoming, normal)) * misWeightBsdf /
+                                           (bsdfPdf * bsdfWeight);
                         }
                     }
                 }
@@ -695,30 +695,30 @@ Color BDpathTrace(const Ray& ray,
         }
 
         // Sample the BRDF to find the direction the next leg of the path goes in
-        float brdfSampleU, brdfSampleV;
-        samplers.m_bounceSamplers[numBounces]->sample2D(pixelSampleIndex, brdfSampleU, brdfSampleV);
+        float bsdfSampleU, bsdfSampleV;
+        samplers.m_bounceSamplers[numBounces]->sample2D(pixelSampleIndex, bsdfSampleU, bsdfSampleV);
         Vector incoming;
-        float incomingBrdfPdf = 0.0f;
-        float incomingBrdfResult = pBrdf->sampleSA(incoming,
+        float incomingBsdfPdf = 0.0f;
+        float incomingBsdfResult = pBsdf->sampleSA(incoming,
                                                    outgoing,
                                                    normal,
-                                                   brdfSampleU,
-                                                   brdfSampleV,
-                                                   incomingBrdfPdf);
+                                                   bsdfSampleU,
+                                                   bsdfSampleV,
+                                                   incomingBsdfPdf);
 
-        if (incomingBrdfPdf > 0.0f)
+        if (incomingBsdfPdf > 0.0f)
         {
             currentRay.m_origin = position;
             currentRay.m_direction = -incoming;
             currentRay.m_tMax = kRayTMax;
             // Reduce lighting effect for the next bounce based on this bounce's BRDF
-            throughputEye *= intersection.m_colorModifier * matColor * incomingBrdfResult *
+            throughputEye *= intersection.m_colorModifier * matColor * incomingBsdfResult *
                           (std::fabs(dot(-incoming, normal)) /
-                          (incomingBrdfPdf * brdfWeight));
+                          (incomingBsdfPdf * bsdfWeight));
         }
         else
         {
-            break; // BRDF is zero, stop bouncing
+            break; // BSDF is zero, stop bouncing
         }
 
         numBounces++;
@@ -803,16 +803,16 @@ Color BDpathTrace(const Ray& ray,
         Point position = intersection.position();
         Vector normal = intersection.m_normal;
         Vector outgoing = currentRay.m_direction;
-        Brdf* pBrdf = NULL;
-        float brdfWeight = 1.0f;
+        Bsdf* pBsdf = NULL;
+        float bsdfWeight = 1.0f;
         Color matColor = intersection.m_pMaterial->evaluate(position,
                                                             normal,
                                                             outgoing,
-                                                            pBrdf,
-                                                            brdfWeight);
+                                                            pBsdf,
+                                                            bsdfWeight);
 
-        // No BRDF? We can't evaluate lighting, so bail
-        if(pBrdf == NULL){
+        // No BSDF? We can't evaluate lighting, so bail
+        if(pBsdf == NULL){
             return result;
         }
 
@@ -827,31 +827,31 @@ Color BDpathTrace(const Ray& ray,
         }
 
         // Sample the BRDF to find the direction the next leg of the path goes in
-        float brdfSampleU, brdfSampleV;
-        samplers.m_lightBounceSamplers[numLightBounces]->sample2D(pixelSampleIndex, brdfSampleU, brdfSampleV);
+        float bsdfSampleU, bsdfSampleV;
+        samplers.m_lightBounceSamplers[numLightBounces]->sample2D(pixelSampleIndex, bsdfSampleU, bsdfSampleV);
         Vector incoming;
-        float incomingBrdfPdf = 0.0f;
-        float incomingBrdfResult = pBrdf->sampleSA(incoming,
+        float incomingBsdfPdf = 0.0f;
+        float incomingBsdfResult = pBsdf->sampleSA(incoming,
                                                    outgoing,
                                                    normal,
-                                                   brdfSampleU,
-                                                   brdfSampleV,
-                                                   incomingBrdfPdf);
+                                                   bsdfSampleU,
+                                                   bsdfSampleV,
+                                                   incomingBsdfPdf);
 
-        // if the Brdf's pdf is greater than 0
-        if(incomingBrdfPdf > 0.0f){
+        // if the Bsdf's pdf is greater than 0
+        if(incomingBsdfPdf > 0.0f){
             // setup the ray for the next iteration
             currentRay.m_origin = position;
             currentRay.m_direction = -incoming;
             currentRay.m_tMax = kRayTMax;
             // Reduce lighting effect for the next bounce based on this bounce's BRDF
-            throughputLight *= intersection.m_colorModifier * matColor * incomingBrdfResult *
+            throughputLight *= intersection.m_colorModifier * matColor * incomingBsdfResult *
                             (std::fabs(dot(-incoming, normal)) /
-                             (incomingBrdfPdf * brdfWeight));
+                             (incomingBsdfPdf * bsdfWeight));
         }
         // else
         else{
-            // BRDF is zero; stop bouncing
+            // BSDF is zero; stop bouncing
             break;
         }
 
@@ -870,12 +870,12 @@ Color BDpathTrace(const Ray& ray,
     //the surface normal of the last eye vertex
     Vector lastEyeNormal = lastEyeIntersection.m_normal;
     //the Brdf of the last eye vertex (pLastEyeBrdf)
-    float lastBrdfPdf = 0.0f;
-    float lastBrdfResult = pLastEyeBrdf->evaluateSA(connectDirection,
+    float lastBsdfPdf = 0.0f;
+    float lastBsdfResult = pLastEyeBsdf->evaluateSA(connectDirection,
                                                     lastEyeOutgoing,
                                                     lastEyeNormal,
-                                                    lastBrdfPdf);
-    if(lastBrdfPdf > 0.0f && lastBrdfResult > 0.0f){
+                                                    lastBsdfPdf);
+    if(lastBsdfPdf > 0.0f && lastBsdfResult > 0.0f){
         //create a ray that will connect these vertices
         Ray connectRay = Ray(lastLightVertex, connectDirection, connectDistance, ray.m_time);
 
@@ -883,12 +883,12 @@ Color BDpathTrace(const Ray& ray,
         // If the ends of each path are mutually visible
         if(!scene.intersect(connectIntersection)){
 
-            //TODO: What do we do with lastBrdfPdf??????
+            //TODO: What do we do with lastBsdfPdf??????
 
             // add the contribution of the light path to the final result (using the eye path's last BRDF to get a pdf value)
             // result += throughputEye * (1/distance squared)? * throughputLight * lightResult (lightResult is from the light path's first edge)
             // We need to do distance attenuation, I think
-            result += throughputEye * (1.0f / (connectDistance * connectDistance)) * lastBrdfResult * throughputLight * lightPathLightResult;
+            result += throughputEye * (1.0f / (connectDistance * connectDistance)) * lastBsdfResult * throughputLight * lightPathLightResult;
         }
     }
 
