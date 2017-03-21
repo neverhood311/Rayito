@@ -112,7 +112,7 @@ struct SamplerContainer
     std::vector<Sampler*> m_lightSelectionSamplers;
     std::vector<Sampler*> m_lightElementSamplers;
     std::vector<Sampler*> m_lightSamplers;
-    std::vector<Sampler*> m_brdfSamplers;
+    std::vector<Sampler*> m_bsdfSamplers;
     
     unsigned int m_numLightSamples;
     unsigned int m_maxRayDepth;
