@@ -15,12 +15,79 @@
 namespace Rayito
 {
 
+//
+// BSDF (bidirectional scattering distribution function)
+//
+
+class Bsdf
+{
+public:
+    Bsdf() {}
+
+    virtual ~Bsdf() {}
+
+    /*
+     * BSDF details:
+     *
+     * There are two variations of each of these functions: those that produce
+     * PDFs with respect to solid angle (not accounting for angle between
+     * outgoing vector and the normal) or projected solid angle (the opposite).
+     * The PDFs always go from 0.0 to 1.0.
+     *
+     * These BSDFs must also be energy-conserving, meaning they cannot ever
+     * reflect back more light than they receive when you gather all of the light
+     * reflected over the entire hemisphere around the surface normal.
+     *
+     * The evaluate methods return the reflectance given the incoming and
+     * outgoing directions and the surface normal, and also output the PDF
+     * (probability distribution function) value for that configuration of
+     * in/out/normal.
+     *
+     * The sample methods will generate an incoming direction given an outgoing
+     * direction and normal, also returning the PDF value for having generated
+     * that incoming direction.
+     *
+     * The pdf methods just return the PDF of the in/out/normal configuration.
+     *
+     * The Dirac distribution flag indicates this is a BSDF that really only
+     * reflects in one direction (perfect reflection or refraction), indicating
+     * the PDF of a given in/out/normal combo will always be zero.  However,
+     * the sample methods will return the exact input direction with a PDF of 1.0.
+    */
+
+    virtual float evaluateSA(const Vector& incoming, const Vector& outgoing, const Vector& normal, float& outPdf)  const = 0;
+    virtual float evaluatePSA(const Vector& incoming, const Vector& outgoing, const Vector& normal, float& outPdf) const
+    {
+        float scattering = evaluateSA(incoming, outgoing, normal, outPdf);
+        // Convert from solid-angle PDF to projected-solid-angle PDF
+        outPdf /= std::fabs(dot(incoming, normal));
+        return scattering;
+    }
+
+    virtual float sampleSA(Vector& outIncoming, const Vector& outgoing, const Vector& normal, float u1, float u2, float& outPdf)  const = 0;
+    virtual float samplePSA(Vector& outIncoming, const Vector& outgoing, const Vector& normal, float u1, float u2, float& outPdf) const
+    {
+        float scattering = sampleSA(outIncoming, outgoing, normal, u1, u2, outPdf);
+        // Convert from solid-angle PDF to projected-solid-angle PDF
+        outPdf /= std::fabs(dot(outIncoming, normal));
+        return scattering;
+    }
+
+    virtual float pdfSA(const Vector& incoming, const Vector& outgoing, const Vector& normal)  const = 0;
+    virtual float pdfPSA(const Vector& incoming, const Vector& outgoing, const Vector& normal) const
+    {
+        // Convert from solid-angle PDF to projected-solid-angle PDF
+        return pdfSA(incoming, outgoing, normal) / std::fabs(dot(incoming, normal));
+    }
+
+    virtual bool isDiracDistribution() const { return false; }
+};
 
 //
 // BRDF (bidirectional reflectance distribution function)
 //
 
-class Brdf
+class Brdf : public Bsdf
 {
 public:
     Brdf() { }
@@ -30,35 +97,12 @@ public:
     /*
      * BRDF details:
      * 
-     * There are two variations of each of these functions: those that produce
-     * PDFs with respect to solid angle (not accounting for angle between
-     * outgoing vector and the normal) or projected solid angle (the opposite).
-     * The PDFs always go from 0.0 to 1.0.
-     * 
+     * Same as BSDF with the following addition:
      * The outgoing direction is away from the surface in the same hemisphere as
      * the normal, while the incoming is toward the surface opposite the normal.
-     * These BRDFs must also be energy-conserving, meaning they cannot ever
-     * reflect back more light than they receive when you gather all of the light
-     * reflected over the entire hemisphere around the surface normal.
-     * 
-     * The evaluate methods return the reflectance given the incoming and
-     * outgoing directions and the surface normal, and also output the PDF
-     * (probability distribution function) value for that configuration of
-     * in/out/normal.
-     * 
-     * The sample methods will generate an incoming direction given an outgoing
-     * direction and normal, also returning the PDF value for having generated
-     * that incoming direction.
-     * 
-     * The pdf methods just return the PDF of the in/out/normal configuration.
-     * 
-     * The Dirac distribution flag indicates this is a BRDF that really only
-     * reflects in one direction (perfect reflection or refraction), indicating
-     * the PDF of a given in/out/normal combo will always be zero.  However,
-     * the sample methods will return the exact input direction with a PDF of 1.0.
+     *
      */
     
-    virtual float evaluateSA(const Vector& incoming, const Vector& outgoing, const Vector& normal, float& outPdf)  const = 0;
     virtual float evaluatePSA(const Vector& incoming, const Vector& outgoing, const Vector& normal, float& outPdf) const
     {
         float reflectance = evaluateSA(incoming, outgoing, normal, outPdf);
@@ -67,7 +111,6 @@ public:
         return reflectance;
     }
     
-    virtual float sampleSA(Vector& outIncoming, const Vector& outgoing, const Vector& normal, float u1, float u2, float& outPdf)  const = 0;
     virtual float samplePSA(Vector& outIncoming, const Vector& outgoing, const Vector& normal, float u1, float u2, float& outPdf) const
     {
         float reflectance = sampleSA(outIncoming, outgoing, normal, u1, u2, outPdf);
@@ -76,13 +119,57 @@ public:
         return reflectance;
     }
     
-    virtual float pdfSA(const Vector& incoming, const Vector& outgoing, const Vector& normal)  const = 0;
     virtual float pdfPSA(const Vector& incoming, const Vector& outgoing, const Vector& normal) const
     {
         // Convert from solid-angle PDF to projected-solid-angle PDF
         return pdfSA(incoming, outgoing, normal) / std::fabs(dot(incoming, normal));
     }
     
+    virtual bool isDiracDistribution() const { return false; }
+};
+
+//
+// Bidirectional Transmittance Distribution Function
+//
+
+class Btdf : public Bsdf
+{
+public:
+    Btdf() { }
+
+    virtual ~Btdf() { }
+
+    /*
+     * BTDF details:
+     *
+     * Same as BSDF with the following addition:
+     * The outgoing direction is away from the surface in the opposite hemisphere as
+     * the normal, while the incoming is toward the surface in the same direction as the normal.
+     *
+     */
+
+    virtual float evaluatePSA(const Vector& incoming, const Vector& outgoing, const Vector& normal, float& outPdf) const
+    {
+        float transmittance = evaluateSA(incoming, outgoing, normal, outPdf);
+        // Convert from solid-angle PDF to projected-solid-angle PDF
+        outPdf /= std::fabs(dot(incoming, normal));
+        return transmittance;
+    }
+
+    virtual float samplePSA(Vector& outIncoming, const Vector& outgoing, const Vector& normal, float u1, float u2, float& outPdf) const
+    {
+        float transmittance = sampleSA(outIncoming, outgoing, normal, u1, u2, outPdf);
+        // Convert from solid-angle PDF to projected-solid-angle PDF
+        outPdf /= std::fabs(dot(outIncoming, normal));
+        return transmittance;
+    }
+
+    virtual float pdfPSA(const Vector& incoming, const Vector& outgoing, const Vector& normal) const
+    {
+        // Convert from solid-angle PDF to projected-solid-angle PDF
+        return pdfSA(incoming, outgoing, normal) / std::fabs(dot(incoming, normal));
+    }
+
     virtual bool isDiracDistribution() const { return false; }
 };
 
@@ -430,6 +517,86 @@ public:
     virtual bool isDiracDistribution() const { return true; }
 };
 
+// Perfect specular refraction
+class PerfectRefraction : public Btdf
+{
+public:
+    PerfectRefraction() : Btdf() {
+        m_ior = 1.0f;
+    }
+
+    PerfectRefraction(float ior) : Btdf() {
+        m_ior = ior;
+    }
+
+    virtual ~PerfectRefraction() { }
+
+    virtual float evaluateSA(const Vector& incoming, const Vector& outgoing, const Vector& normal, float& outPdf) const
+    {
+        // Not possible to randomly sample this distribution by chance
+        outPdf = 0.0f;
+        return 0.0f;
+    }
+
+    virtual float evaluatePSA(const Vector& incoming, const Vector& outgoing, const Vector& normal, float& outPdf) const
+    {
+        // Not possible to randomly sample this distribution by chance
+        outPdf = 0.0f;
+        return 0.0f;
+    }
+
+    virtual float sampleSA(Vector& outIncoming, const Vector& outgoing, const Vector& normal, float u1, float u2, float& outPdf) const
+    {
+        Vector incident = -outgoing;
+        float eta;
+        Vector t_norm;
+        if(dot(normal, incident) < 0.0f){
+            //outside going in
+            eta = 1.0f / m_ior;
+            t_norm = normal;
+        }
+        else{
+            //inside going out
+            eta = m_ior;
+            t_norm = -normal;
+        }
+
+        float k = 1.0f - eta * eta * (1.0f - dot(t_norm, incident) * dot(t_norm, incident));
+        if(k < 0.0f){
+            //internal reflection
+            outIncoming = incident - 2.0f * t_norm * dot(t_norm, incident);
+        }
+        else{
+            //refraction
+            outIncoming = -((incident * eta) - (t_norm * (eta * dot(t_norm, incident) + std::sqrt(k))));
+        }
+
+        outPdf = std::fabs(dot(-outIncoming, normal));
+        return 1.0f;
+    }
+
+    virtual float samplePSA(Vector &outIncoming, const Vector &outgoing, const Vector &normal, float u1, float u2, float &outPdf) const
+    {
+        sampleSA(outIncoming, outgoing, normal, u1, u2, outPdf);
+        outPdf = 1.0f;
+        return 1.0f;
+    }
+
+    virtual float pdfSA(const Vector &incoming, const Vector &outgoing, const Vector &normal) const
+    {
+        return std::fabs(dot(incoming, normal));
+    }
+
+    virtual float pdfPSA(const Vector &incoming, const Vector &outgoing, const Vector &normal) const
+    {
+        return 1.0f;
+    }
+
+    virtual bool isDiracDistribution() const { return true; }
+
+protected:
+    float m_ior;
+};
 
 //
 // Material
@@ -446,8 +613,8 @@ public:
     virtual Color evaluate(const Point& position,
                            const Vector& normal,
                            const Vector& outgoingRayDirection,
-                           Brdf*& pBrdfChosen,
-                           float& brdfWeight) = 0;
+                           Bsdf*& pBsdfChosen,
+                           float& bsdfWeight) = 0;
 };
 
 
@@ -462,11 +629,11 @@ public:
     virtual Color evaluate(const Point& position,
                            const Vector& normal,
                            const Vector& outgoingRayDirection,
-                           Brdf*& pBrdfChosen,
-                           float& brdfWeight)
+                           Bsdf*& pBsdfChosen,
+                           float& bsdfWeight)
     {
-        brdfWeight = 1.0f;
-        pBrdfChosen = &m_lambert;
+        bsdfWeight = 1.0f;
+        pBsdfChosen = &m_lambert;
         return m_color;
     }
     
@@ -487,11 +654,11 @@ public:
     virtual Color evaluate(const Point& position,
                            const Vector& normal,
                            const Vector& outgoingRayDirection,
-                           Brdf*& pBrdfChosen,
-                           float& brdfWeight)
+                           Bsdf*& pBsdfChosen,
+                           float& bsdfWeight)
     {
-        brdfWeight = 1.0f;
-        pBrdfChosen = &m_glossy;
+        bsdfWeight = 1.0f;
+        pBsdfChosen = &m_glossy;
         return m_color;
     }
     
@@ -512,11 +679,11 @@ public:
     virtual Color evaluate(const Point& position,
                            const Vector& normal,
                            const Vector& outgoingRayDirection,
-                           Brdf*& pBrdfChosen,
-                           float& brdfWeight)
+                           Bsdf*& pBsdfChosen,
+                           float& bsdfWeight)
     {
-        brdfWeight = 1.0f;
-        pBrdfChosen = &m_refl;
+        bsdfWeight = 1.0f;
+        pBsdfChosen = &m_refl;
         return m_color;
     }
     
@@ -525,6 +692,29 @@ protected:
     PerfectReflection m_refl;
 };
 
+// Perfect refraction material
+class RefractionMaterial : public Material
+{
+public:
+    RefractionMaterial(const Color& color, const float ior) : m_color(color), m_refr(ior) { }
+
+    virtual ~RefractionMaterial() { }
+
+    virtual Color evaluate(const Point &position,
+                           const Vector &normal,
+                           const Vector &outgoingRayDirection,
+                           Bsdf *&pBsdfChosen,
+                           float &bsdfWeight)
+    {
+        bsdfWeight = 1.0f;
+        pBsdfChosen = &m_refr;
+        return m_color;
+    }
+
+protected:
+    Color m_color;
+    PerfectRefraction m_refr;
+};
 
 // Emitter (light) material
 class Emitter : public Material
@@ -539,12 +729,12 @@ public:
     virtual Color evaluate(const Point& position,
                            const Vector& normal,
                            const Vector& incomingRayDirection,
-                           Brdf*& pBrdfChosen,
-                           float& brdfWeight)
+                           Bsdf*& pBsdfChosen,
+                           float& bsdfWeight)
     {
         // Let the emittance take care of business
-        pBrdfChosen = NULL;
-        brdfWeight = 1.0f;
+        pBsdfChosen = NULL;
+        bsdfWeight = 1.0f;
         return Color();
     }
     
