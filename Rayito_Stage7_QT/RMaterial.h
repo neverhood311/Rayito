@@ -290,6 +290,68 @@ public:
     }
 };
 
+// Oren-Nayar diffuse BRDF
+class OrenNayar : public Brdf
+{
+public:
+    OrenNayar() : Brdf() {
+        m_sigma = 1.0f;
+        float sig = m_sigma * (M_PI / 180.0f);
+        float sig2 = sig * sig;
+        m_A = 1.0f - (sig2 / (2.0f * (sig2 + 0.33f)));
+        m_B = 0.45f * sig2 / (sig2 + 0.09f);
+    }
+
+    OrenNayar(float sigma) : Brdf() {
+        m_sigma = sigma;
+        float sig = m_sigma * (M_PI / 180.0f);
+        float sig2 = sig * sig;
+        m_A = 1.0f - (sig2 / (2.0f * (sig2 + 0.33f)));
+        m_B = 0.45f * sig2 / (sig2 + 0.09f);
+    }
+
+    virtual ~OrenNayar() { }
+
+    virtual float evaluateSA(const Vector &incoming, const Vector &outgoing, const Vector &normal, float &outPdf) const
+    {
+        //TODO
+        return 0.0f;
+    }
+
+    virtual float evaluatePSA(const Vector &incoming, const Vector &outgoing, const Vector &normal, float &outPdf) const
+    {
+        //TODO
+        return 0.0f;
+    }
+
+    virtual float sampleSA(Vector &outIncoming, const Vector &outgoing, const Vector &normal, float u1, float u2, float &outPdf) const
+    {
+        //TODO
+        return 0.0f;
+    }
+
+    virtual float samplePSA(Vector &outIncoming, const Vector &outgoing, const Vector &normal, float u1, float u2, float &outPdf) const
+    {
+        //TODO
+        return 0.0f;
+    }
+
+    virtual float pdfSA(const Vector &incoming, const Vector &outgoing, const Vector &normal) const
+    {
+        //TODO
+        return 0.0f;
+    }
+
+    virtual float pdfPSA(const Vector &incoming, const Vector &outgoing, const Vector &normal) const
+    {
+        //TODO
+        return 0.0f;
+    }
+
+protected:
+    float m_sigma;
+    float m_A, m_B;
+};
 
 // Ashikhmin-Shirley glossy BRDF, without anisotropy
 class Glossy : public Brdf
@@ -642,6 +704,28 @@ protected:
     Lambert m_lambert;
 };
 
+// Oren-Nayar diffuse material
+class OrenNayarMaterial : public Material
+{
+public:
+    OrenNayarMaterial(const Color& color, float sigma) : m_color(color), m_orenNayar(sigma) { }
+
+    virtual ~OrenNayarMaterial() { }
+
+    virtual Color evaluate(const Point &position,
+                           const Vector &normal,
+                           const Vector &outgoingRayDirection,
+                           Bsdf *&pBsdfChosen, float &bsdfWeight)
+    {
+        bsdfWeight = 1.0f;
+        pBsdfChosen = &m_orenNayar;
+        return m_color;
+    }
+
+protected:
+    Color m_color;
+    OrenNayar m_orenNayar;
+};
 
 // Ashikhmin-Shirley glossy material
 class GlossyMaterial : public Material
