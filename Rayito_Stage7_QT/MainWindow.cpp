@@ -300,7 +300,7 @@ void MainWindow::on_renderButton2_clicked(){
     // No ground plane this time...
 
     // add all of the OBJ meshes for the tough Cornell box
-    Mesh* pWhiteBoxMesh = createFromOBJFile("../models/box_white.obj");
+    Mesh* pWhiteBoxMesh = createFromOBJFile("../models/box_white_2.obj");   //a very tricky lighting situation
     pWhiteBoxMesh->setMaterial(&whiteLambert);
     masterSet.addShape(pWhiteBoxMesh);
 
@@ -316,10 +316,15 @@ void MainWindow::on_renderButton2_clicked(){
     pMonkeyMesh->setMaterial(&whiteLambert);
     masterSet.addShape(pMonkeyMesh);
 
-    Mesh* pLightMesh = createFromOBJFile("../models/box_light.obj");
+    Mesh* pLightMesh = createFromOBJFile("../models/box_light_2.obj"); //a tall light
     pLightMesh->setMaterial(&whiteLambert);
     ShapeLight meshLight(pLightMesh, Color(1.0f, 1.0f, 1.0f), 10.0f);
-    masterSet.addShape(&meshLight);
+    //masterSet.addShape(&meshLight);
+
+    Mesh* pLightMesh_small = createFromOBJFile("../models/box_light_small.obj");    //a very small light
+    pLightMesh_small->setMaterial(&whiteLambert);
+    ShapeLight meshLight_small(pLightMesh_small, Color(1.0f, 1.0f, 1.0f), 115.0f);
+    masterSet.addShape(&meshLight_small);
 
     // Create the camera based on user settings
     PerspectiveCamera cam((float)ui->camFovSpinBox->value(),
@@ -348,6 +353,7 @@ void MainWindow::on_renderButton2_clicked(){
     delete pRedBoxMesh;
     delete pGreenBoxMesh;
     delete pMonkeyMesh;
+    delete pLightMesh_small;
     delete pLightMesh;
 }
 

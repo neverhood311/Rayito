@@ -864,6 +864,18 @@ Color BDpathTrace(const Ray& ray,
     float connectDistance = connectDirection.length();          //the distance between these vertices
     connectDirection.normalize();
 
+    // If the connectDirection and the surface normal at the last light path vertex are in different hemispheres,
+    // then these surfaces are definitely not mutually visible
+    if(dot(connectDirection, lastLightIntersection.m_normal) < 0.0f){
+        return result;
+    }
+
+    // If the connectDirection and the surface normal at the last eye path vertex are in the same hemisphere,
+    // then these surfaces are definitely not mutually visible
+    if(dot(connectDirection, lastEyeIntersection.m_normal) > 0.0f){
+        return result;
+    }
+
     // ask the last point on the eye path if it likes the connection direction
     //the outgoing direction of light from the last eye vertex
     Vector lastEyeOutgoing = -lastEyeIntersection.m_ray.m_direction;
