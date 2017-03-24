@@ -297,10 +297,11 @@ Color pathTrace(const Ray& ray,
             break;
         }
         
-        // Add in emission when directly visible or via perfect specular bounces
-        // (Note that we stop including it through any non-Dirac bounce to
-        // prevent caustic noise.)
-        if (true || numBounces == 0 || numBounces == numDiracBounces)   //actually, if we want specular caustics, we need to do this for every bounce
+        // Add in emission where directly visible from the camera or if the
+        // last bounce was pure specular, as this is the only way to account
+        // for the light. Also if the encountered surface is *not* a light, we
+        // should always add its emission.
+        if (!intersection.m_pShape->isLight() || numBounces == 0 || lastBounceDiracDistribution)
         {
             result += throughput * intersection.m_pMaterial->emittance();
         }
