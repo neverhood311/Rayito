@@ -314,38 +314,93 @@ public:
 
     virtual float evaluateSA(const Vector &incoming, const Vector &outgoing, const Vector &normal, float &outPdf) const
     {
-        //TODO
-        return 0.0f;
+        float retval = evaluatePSA(incoming, outgoing, normal, outPdf);
+        outPdf *= std::fabs(dot(incoming, normal));
+        return retval;
     }
 
     virtual float evaluatePSA(const Vector &incoming, const Vector &outgoing, const Vector &normal, float &outPdf) const
     {
-        //TODO
-        return 0.0f;
+        //PBRT 2nd edition, page 451
+        float sinthetai = SinTheta(incoming);
+        float sinthetao = SinTheta(outgoing);   //TODO: make sure these vectors are in the same space as those in PBRT
+
+        float maxcos = 0.0f;
+        if(sinthetai > 1e-4 && sinthetao > 1e-4){
+            float sinphii = SinPhi(incoming), cosphii = CosPhi(incoming);
+            float sinphio = SinPhi(outgoing), cosphio = CosPhi(outgoing);
+            float dcos = cosphii * cosphio + sinphii * sinphio;
+            maxcos = std::max(0.0f, dcos);
+        }
+
+        float sinalpha, tanbeta;
+        if(AbsCosTheta(incoming) > AbsCosTheta(outgoing)){
+            sinalpha = sinthetao;
+            tanbeta = sinthetai / AbsCosTheta(incoming);
+        }
+        else{
+            sinalpha = sinthetai;
+            tanbeta = sinthetao / AbsCosTheta(outgoing);
+        }
+
+        outPdf = INV_PI * (m_A + m_B * maxcos * sinalpha * tanbeta);
+        return INV_PI * (m_A + m_B * maxcos * sinalpha * tanbeta);
     }
 
     virtual float sampleSA(Vector &outIncoming, const Vector &outgoing, const Vector &normal, float u1, float u2, float &outPdf) const
     {
-        //TODO
-        return 0.0f;
+        float retval = samplePSA(outIncoming, outgoing, normal, u1, u2, outPdf);
+        outPdf *= std::fabs(dot(outIncoming, normal));
+        return retval;
     }
 
     virtual float samplePSA(Vector &outIncoming, const Vector &outgoing, const Vector &normal, float u1, float u2, float &outPdf) const
     {
-        //TODO
-        return 0.0f;
+        // Pick a direction in the hemisphere (eventually stored in outIncoming)
+        // Let's try uniform hemisphere sampling
+        Vector localIncoming = -uniformToHemisphere(u1, u2);
+        // Transform the incoming direction to where the pole lines up with the normal
+        Vector x, y, z;
+        makeCoordinateSpace(normal, x, y, z);
+        outIncoming = transformFromLocalCoordinateSpace(localIncoming, x, y, z);
+        // If the outgoing direction is below the normal's hemisphere,
+        // flip the generated incoming direction also
+        if (dot(outgoing, normal) < 0.0f)
+            outIncoming *= -1.0f;
+        // Calculate the projected solid angle pdf for Oren-Nayar
+        // (ask the brdf what it thinks about this direction)
+        return evaluatePSA(outIncoming, outgoing, normal, outPdf);
     }
 
     virtual float pdfSA(const Vector &incoming, const Vector &outgoing, const Vector &normal) const
     {
-        //TODO
-        return 0.0f;
+        // If incoming and outgoing are in the same hemisphere, that means the
+        // direction is on the backside of the other and no reflection occurs
+        float nDotI = dot(incoming, normal);
+        float nDotO = dot(outgoing, normal);
+        if ((nDotI > 0.0f && nDotO > 0.0f) ||
+            (nDotI < 0.0f && nDotO < 0.0f))
+        {
+            return 0.0f;
+        }
+
+        return pdfPSA(incoming, outgoing, normal) * std::fabs(nDotI);
     }
 
     virtual float pdfPSA(const Vector &incoming, const Vector &outgoing, const Vector &normal) const
     {
-        //TODO
-        return 0.0f;
+        // If incoming and outgoing are in the same hemisphere, that means the
+        // direction is on the backside of the other and no reflection occurs
+        float nDotI = dot(incoming, normal);
+        float nDotO = dot(outgoing, normal);
+        if ((nDotI > 0.0f && nDotO > 0.0f) ||
+            (nDotI < 0.0f && nDotO < 0.0f))
+        {
+            return 0.0f;
+        }
+
+        float outPdf = 0.0f;
+        return evaluatePSA(incoming, outgoing, normal, outPdf);
     }
 
 protected:

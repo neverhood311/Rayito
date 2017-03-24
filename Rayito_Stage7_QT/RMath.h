@@ -17,6 +17,7 @@
     #define M_PI 3.14159265358979
 #endif
 
+#define INV_PI 0.31830988618379
 
 namespace Rayito
 {
@@ -985,6 +986,34 @@ inline Vector transformFromLocalCoordinateSpace(const Vector& v,
                   v.m_x * xAxis.m_z + v.m_y * yAxis.m_z + v.m_z * zAxis.m_z);
 }
 
+inline float Clamp(float val, float low, float high) {
+    if(val < low) return low;
+    else if(val > high) return high;
+    else return val;
+}
+
+inline float CosTheta(const Vector& w) { return w.m_z; }
+inline float AbsCosTheta(const Vector& w) { return std::fabs(w.m_z); }
+
+inline float SinTheta2(const Vector& w) {
+    return std::max(0.0f, 1.0f - CosTheta(w) * CosTheta(w));
+}
+
+inline float SinTheta(const Vector& w) {
+    return std::sqrt(SinTheta2(w));
+}
+
+inline float CosPhi(const Vector& w) {
+    float sintheta = SinTheta(w);
+    if(sintheta == 0.0f) return 1.0f;
+    return Clamp(w.m_x / sintheta, -1.0f, 1.0f);
+}
+
+inline float SinPhi(const Vector& w) {
+    float sintheta = SinTheta(w);
+    if(sintheta == 0.0f) return 0.0f;
+    return Clamp(w.m_y / sintheta, -1.0f, 1.0f);
+}
 
 } // namespace Rayito
 
