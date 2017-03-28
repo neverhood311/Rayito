@@ -295,16 +295,14 @@ class OrenNayar : public Brdf
 {
 public:
     OrenNayar() : Brdf() {
-        m_sigma = 1.0f;
-        float sig = m_sigma * (M_PI / 180.0f);
+        float sig = 1.0f;
         float sig2 = sig * sig;
         m_A = 1.0f - (sig2 / (2.0f * (sig2 + 0.33f)));
         m_B = 0.45f * sig2 / (sig2 + 0.09f);
     }
 
     OrenNayar(float sigma) : Brdf() {
-        m_sigma = sigma;
-        float sig = m_sigma * (M_PI / 180.0f);
+        float sig = sigma;
         float sig2 = sig * sig;
         m_A = 1.0f - (sig2 / (2.0f * (sig2 + 0.33f)));
         m_B = 0.45f * sig2 / (sig2 + 0.09f);
@@ -343,7 +341,7 @@ public:
             tanbeta = sinthetao / AbsCosTheta(outgoing);
         }
 
-        outPdf = INV_PI * (m_A + m_B * maxcos * sinalpha * tanbeta);
+        outPdf = INV_PI;    //PBRT 2nd edition, page 695 says to do this
         return INV_PI * (m_A + m_B * maxcos * sinalpha * tanbeta);
     }
 
@@ -357,8 +355,9 @@ public:
     virtual float samplePSA(Vector &outIncoming, const Vector &outgoing, const Vector &normal, float u1, float u2, float &outPdf) const
     {
         // Pick a direction in the hemisphere (eventually stored in outIncoming)
-        // Let's try uniform hemisphere sampling
-        Vector localIncoming = -uniformToHemisphere(u1, u2);
+        // http://research.cs.wisc.edu/graphics/Courses/779-s2005/lectures/cs779-7.ppt says we should do cosine-weighted hemisphere
+        // Also PBRT 2nd edition, page 694 says to do the cosine-weighted hemisphere
+        Vector localIncoming = -uniformToCosineHemisphere(u1, u2);
         // Transform the incoming direction to where the pole lines up with the normal
         Vector x, y, z;
         makeCoordinateSpace(normal, x, y, z);
@@ -400,11 +399,11 @@ public:
         }
 
         float outPdf = 0.0f;
-        return evaluatePSA(incoming, outgoing, normal, outPdf);
+        evaluatePSA(incoming, outgoing, normal, outPdf);
+        return outPdf;
     }
 
 protected:
-    float m_sigma;
     float m_A, m_B;
 };
 
