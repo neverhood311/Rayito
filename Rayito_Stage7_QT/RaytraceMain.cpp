@@ -76,6 +76,7 @@ protected:
         SamplerContainer samplers;
         samplers.m_numLightSamples = m_lights.empty() ? 0 : m_lightSamplesHint * m_lightSamplesHint;
         samplers.m_maxRayDepth = m_maxRayDepth;
+        samplers.m_minRayDepth = 3; //TODO: this should be adjustable
         
         // Set up samplers for each of the ray bounces.  Each bounce will use
         // the same sampler for all pixel samples in the pixel to reduce noise.
@@ -506,406 +507,113 @@ Color BDpathTrace(const Ray& ray,
                   Rng& rng,
                   SamplerContainer& samplers,
                   unsigned int pixelSampleIndex){
-    //DO REGULAR EYE PATH STUFF
-    // Accumulate total incoming radiance in 'result'
+    //initialize the final result
     Color result = Color(0.0f, 0.0f, 0.0f);
-    // As we get through more and more bounces, we track how much the light is
-    // diminished through each bounce
-    Color throughputEye = Color(1.0f, 1.0f, 1.0f);
+    //the length of these vectors should be samplers.m_maxRayDepth * 2
+    //initialize vector of geometric terms, edge_GeoTerm
+    //initialize vector of specular flags, vert_isDirac, set all to false
+    //initialize vector of PDFs with respect to Projected Solid Angle, vert_PDFPSA
+    //initialize vector of intersections, vert_intersection //Do we need this?
+    //initialize vector of vertex positions, vert_position
+    //initialize vector of vertex normals, vert_normal
+    //initialize vector of vertex BSDFs, vert_BSDF
 
-    // The last intersection on the eye path
-    Intersection lastEyeIntersection;
+    //BUILD A PATH STARTING FROM THE EYE
+    //initialize the eye throughput (for russian roulette) to (1,1,1)
+    //set the first vert_position to the camera's position
+    //set the first vert_PDFPSA
+    //initialize the eye vertex count, nE, to 1
+    //start with the initial ray from the camera
+    //while depth < max depth
+        //if numbounces > min depth, do russian roulette
+            //get the maximum component of the eye throughput
+            //get a random number
+            //if the random number is greater than the max component
+                //you've been killed
+                //break
+        //Trace the ray to see if we hit anything
+        //if we didn't
+            //return background color
+        //store the intersection in vert_intersection????
+        //evaluate the material and intersection information at this bounce
+        //set vert_position[nE]
+        //set vert_normal[nE]
+        //set vert_BSDF[nE]
+        //set edge_GeoTerm[nE-1]
+        //if this BSDF is perfect specular
+            //set vert_isDirac[nE] to true
+        //if this bounce is a light
+            //WHAT DO WE DO?
+            //we've found a light, so let's not look for another one
+            //set foundLight to true
+        //Sample the BSDF to find the direction the next leg of the path goes in
+        //if the BsdfPdf > 0
+            //update currentRay with the new direction and origin
+        //else
+            //we're done here, so break
+        //update the eye throughput //TODO
+        //increment nE
+        //increment numBounces
 
-    // The last Bsdf on the eye path
-    Bsdf* pLastEyeBsdf;
+    //BUILD A PATH STARTING FROM THE LIGHT
+    //initialize the light throughput (for russian roulette) to (1,1,1)
+    //Pick a random light and get a sample from it (a position and direction)
+    //set the last vert_position to the light's position
+    //set the last vert_PDFPSA
+    //initialize the light vertex count, nL, to 1
+    //create a ray using the light's position and direction
+    //while depth < max depth
+        //if numbounces > min depth, do russian roulette
+            //get the maximum component of the light throughput
+            //get a random number
+            //if the random number is greater than the max component
+                //you've been killed
+                //break
+        //Trace the ray to see if we hit anything
+        //if we didn't
+            //we can still use this light sample, so we're not done with this path
+            //break, but don't return
+        //store the intersection in vert_intersection????
+        //evaluate the material and intersection information at this bounce
+        //set vert_position[length - nL - 1]
+        //set vert_normal[length - nL - 1]
+        //set vert_BSDF[length - nL - 1]
+        //set edge_GeoTerm[length - nL]
+        //if this BSDF is perfect specular
+            //set vert_isDirac[length - nL - 1] to true
+        //if this bounce is a light
+            //WHAT DO WE DO????
+            //let's pretend it never happened and end the light path here
+        //Sample the BSDF to find the direction the next leg of the path goes in
+        //if the BsdfPdf > 0
+            //update currentRay with the new direction and origin
+        //else
+            //we're done here, so break
+        //update the light throughput //TODO
+        //increment nL
+        //increment numBounces
 
-    // Start with the initial ray from the camera
-    Ray currentRay = ray;
+    //BUILD VARIATIONS OF THE COMBINED PATHS
+    //for all possible values of S (0-nL)
+        //for all possible values of T (1-nE) (we start at 1 so that we don't create contributions for other pixels)
+        //SUM THEIR CONTRIBUTIONS ACCORDING TO THEIR WEIGHTS AND PROBABILITY DISTRIBUTIONS
+            //if vertex S or vertex T is a Dirac distribution
+                //skip this path
+            //calculate the geometric term for the connecting edge
+            //if it's 0
+                //skip this path
+            //calculate the Pdf for connecting the vertex T to vertex S
+            //if it's 0
+                //skip this path
+            //calculate the MIS weight for this path, Wst (Veach, pg 306)
+            //if it's 0
+                //skip this path
+            //calculate Alpha_L_S (Veach, pg 304)
+            //calculate Alpha_E_T (Veach, pg 304)
+            //calculate Cst (Veach, pg 305)
+            //add Cst * Alpha_L_S * Alpha_E_T to the result
 
-    // While we have bounces left we can still take...
-    size_t numBounces = 0;
-    size_t numDiracBounces = 0;
-    bool lastBounceDiracDistribution = false;
-    bool cameraRayHitBG = true;
-    while (numBounces < samplers.m_maxRayDepth){
-        // Trace the ray to see if we hit anything
-        Intersection intersection(currentRay);
-        if (!scene.intersect(intersection))
-        {
-            // No hit, return black (background)
-            break;
-        }
-        // The initial camera ray didn't hit the background
-        cameraRayHitBG = false;
-
-
-        // Add in emission when directly visible or via perfect specular bounces
-        // (Note that we stop including it through any non-Dirac bounce to
-        // prevent caustic noise.)
-        if (true || numBounces == 0 || numBounces == numDiracBounces)
-        {
-            result += throughputEye * intersection.m_pMaterial->emittance();
-        }
-
-        // Evaluate the material and intersection information at this bounce
-        Point position = intersection.position();
-        Vector normal = intersection.m_normal;
-        Vector outgoing = -currentRay.m_direction;
-        Bsdf* pBsdf = NULL;
-        float bsdfWeight = 1.0f;
-        Color matColor = intersection.m_pMaterial->evaluate(position,
-                                                            normal,
-                                                            outgoing,
-                                                            pBsdf,
-                                                            bsdfWeight);
-        // No BSDF?  We can't evaluate lighting, so bail.
-        if (pBsdf == NULL)
-        {
-            return result;
-        }
-
-        // Copy this intersection
-        lastEyeIntersection = intersection; //TODO: make sure this is a deep copy
-        //copy the last valid Bsdf encountered
-        pLastEyeBsdf = pBsdf;
-
-        // Was this a perfect specular bounce?
-        lastBounceDiracDistribution = pBsdf->isDiracDistribution();
-        if (lastBounceDiracDistribution)
-            numDiracBounces++;
-
-        // Evaluate direct lighting at this bounce
-
-        if (!lastBounceDiracDistribution)
-        {
-            Color lightResult = Color(0.0f, 0.0f, 0.0f);
-            float lightSelectionWeight = float(lights.size()) / samplers.m_numLightSamples;
-            for (size_t lightSampleIndex = 0; lightSampleIndex < samplers.m_numLightSamples; ++lightSampleIndex)
-            {
-                // Sample lights using MIS between the light and the BSDF.
-                // This means we ask the light for a direction, and the likelihood
-                // of having sampled that direction (the PDF).  Then we ask the
-                // BSDF what it thinks of that direction (its PDF), and weight
-                // the light sample with MIS.
-                //
-                // Then, we ask the BSDF for a direction, and the likelihood of
-                // having sampled that direction (the PDF).  Then we ask the
-                // light what it thinks of that direction (its PDF, and whether
-                // that direction even runs into the light at all), and weight
-                // the BSDF sample with MIS.
-                //
-                // By doing both samples and asking both the BSDF and light for
-                // their PDF for each one, we can combine the strengths of both
-                // sampling methods and get the best of both worlds.  It does
-                // cost an extra shadow ray and evaluation, though, but it is
-                // generally such an improvement in quality that it is very much
-                // worth the overhead.
-
-                // Select a light randomly for this sample
-                unsigned int finalLightSampleIndex = pixelSampleIndex * samplers.m_numLightSamples +
-                                                     lightSampleIndex;
-                float liu = samplers.m_lightSelectionSamplers[numBounces]->sample1D(finalLightSampleIndex);     //This is for picking a light
-                size_t lightIndex = (size_t)(liu * lights.size());
-                if (lightIndex >= lights.size())
-                    lightIndex = lights.size() - 1;
-                Light *pLightShape = (Light*) lights[lightIndex];
-
-                // Ask the light for a random position/normal we can use for lighting
-                float leu = samplers.m_lightElementSamplers[numBounces]->sample1D(finalLightSampleIndex);       //This is for picking an element within the light (like a triangular face)
-                float lsu, lsv;
-                samplers.m_lightSamplers[numBounces]->sample2D(finalLightSampleIndex, lsu, lsv);                //This is for picking a point within the light element
-                Point lightPoint;
-                Vector lightNormal;
-                float lightPdf = 0.0f;
-                pLightShape->sampleSurface(position,
-                                           normal,
-                                           ray.m_time,
-                                           lsu, lsv, leu,
-                                           lightPoint,
-                                           lightNormal,
-                                           lightPdf);
-
-                if (lightPdf > 0.0f)
-                {
-                    // Ask the BRDF what it thinks of this light position (for MIS)
-                    Vector lightIncoming = position - lightPoint;
-                    float lightDistance = lightIncoming.normalize();
-                    float bsdfPdf = 0.0f;
-                    float bsdfResult = pBsdf->evaluateSA(lightIncoming,
-                                                         outgoing,
-                                                         normal,
-                                                         bsdfPdf);
-                    if (bsdfResult > 0.0f && bsdfPdf > 0.0f)
-                    {
-                        // Fire a shadow ray to make sure we can actually see the light position
-                        Ray shadowRay(position, -lightIncoming, lightDistance - kRayTMin, ray.m_time);
-                        if (!scene.doesIntersect(shadowRay))
-                        {
-                            // The light point is visible, so let's add that
-                            // contribution (mixed by MIS)
-                            float misWeightLight = powerHeuristic(1, lightPdf, 1, bsdfPdf);
-                            lightResult += pLightShape->emitted() *
-                                           intersection.m_colorModifier * matColor *
-                                           bsdfResult *
-                                           std::fabs(dot(-lightIncoming, normal)) *
-                                           misWeightLight / (lightPdf * bsdfWeight);
-                        }
-                    }
-                }
-
-                // Ask the BSDF for a sample direction
-                float bsu, bsv;
-                samplers.m_bsdfSamplers[numBounces]->sample2D(finalLightSampleIndex, bsu, bsv);
-                Vector bsdfIncoming;
-                float bsdfPdf = 0.0f;
-                float bsdfResult = pBsdf->sampleSA(bsdfIncoming,
-                                                   outgoing,
-                                                   normal,
-                                                   bsu,
-                                                   bsv,
-                                                   bsdfPdf);
-                if (bsdfPdf > 0.0f && bsdfResult > 0.0f)
-                {
-                    Intersection shadowIntersection(Ray(position, -bsdfIncoming, kRayTMax, ray.m_time));
-                    bool intersected = scene.intersect(shadowIntersection);
-                    if (intersected && shadowIntersection.m_pShape == pLightShape)
-                    {
-                        // Ask the light what it thinks of this direction (for MIS)
-                        lightPdf = pLightShape->intersectPdf(shadowIntersection);
-                        if (lightPdf > 0.0f)
-                        {
-                            // BSDF chose the light, so let's add that
-                            // contribution (mixed by MIS)
-                            float misWeightBsdf = powerHeuristic(1, bsdfPdf, 1, lightPdf);
-                            lightResult += pLightShape->emitted() *
-                                           intersection.m_colorModifier * matColor * bsdfResult *
-                                           std::fabs(dot(-bsdfIncoming, normal)) * misWeightBsdf /
-                                           (bsdfPdf * bsdfWeight);
-                        }
-                    }
-                }
-            }
-
-            // Average light samples
-            lightResult *= samplers.m_numLightSamples > 0 ? lightSelectionWeight : 0.0f;
-
-            // Add direct lighting at this bounce (modified by how much the
-            // previous bounces have dimmed it)
-            result += throughputEye * lightResult;
-        }
-
-        // Sample the BRDF to find the direction the next leg of the path goes in
-        float bsdfSampleU, bsdfSampleV;
-        samplers.m_bounceSamplers[numBounces]->sample2D(pixelSampleIndex, bsdfSampleU, bsdfSampleV);
-        Vector incoming;
-        float incomingBsdfPdf = 0.0f;
-        float incomingBsdfResult = pBsdf->sampleSA(incoming,
-                                                   outgoing,
-                                                   normal,
-                                                   bsdfSampleU,
-                                                   bsdfSampleV,
-                                                   incomingBsdfPdf);
-
-        if (incomingBsdfPdf > 0.0f)
-        {
-            currentRay.m_origin = position;
-            currentRay.m_direction = -incoming;
-            currentRay.m_tMax = kRayTMax;
-            // Reduce lighting effect for the next bounce based on this bounce's BRDF
-            throughputEye *= intersection.m_colorModifier * matColor * incomingBsdfResult *
-                          (std::fabs(dot(-incoming, normal)) /
-                          (incomingBsdfPdf * bsdfWeight));
-        }
-        else
-        {
-            break; // BSDF is zero, stop bouncing
-        }
-
-        numBounces++;
-    }
-
-    // if the initial camera ray hit the background,
-    // there's no way light can reach this point through a light path
-    if(cameraRayHitBG){
-        return result;
-    }
-    // if the eye path ended with a dirac bounce, the pdf of the path
-    // that connects eye and light paths will be zero so there's no need to trace a light path
-    if(lastBounceDiracDistribution){
-        return result;
-    }
-
-    //TRACE A PATH FROM A LIGHT SOURCE
-
-    // Create a new throughput for the light path
-    Color throughputLight = Color(1.0f, 1.0f, 1.0f);
-
-    // Pick a random light and get a sample from it
-    unsigned int finalBDLightSampleIndex = pixelSampleIndex;
-    float bd_liu = samplers.m_BDlightSelectionSampler->sample1D(finalBDLightSampleIndex);
-    size_t bd_lightIndex = (size_t)(bd_liu * lights.size());
-    if(bd_lightIndex >= lights.size())
-        bd_lightIndex = lights.size() - 1;
-    Light *pBDLightShape = (Light*) lights[bd_lightIndex];
-
-    // Ask the light for a random position
-    float bd_leu = samplers.m_BDlightElementSampler->sample1D(finalBDLightSampleIndex);
-    float bd_lsu, bd_lsv;
-    samplers.m_BDlightSampler->sample2D(finalBDLightSampleIndex, bd_lsu, bd_lsv);
-    Point bd_lightPoint;        //we only care about this one
-    Vector bd_lightNormal;      //we also need this one
-    float dummyLightPdf = 0.0f;   //this will be a dummy value
-    Point dummyPosition = Point();
-    Vector dummyNormal = Vector(1.0f,1.0f,1.0f);
-    pBDLightShape->sampleSurface(dummyPosition,
-                                 dummyNormal,
-                                 ray.m_time,
-                                 bd_lsu, bd_lsv, bd_leu,
-                                 bd_lightPoint,
-                                 bd_lightNormal,
-                                 dummyLightPdf);
-    // Pick a random direction in the hemisphere (we're assuming the lights emit diffusely)
-    float bd_ldu, bd_ldv;
-    samplers.m_BDlightDirectionSampler->sample2D(finalBDLightSampleIndex, bd_ldu, bd_ldv);
-    Vector bd_localOutgoing = uniformToCosineHemisphere(bd_ldu, bd_ldv);
-    Vector x, y, z;
-    makeCoordinateSpace(bd_lightNormal, x, y, z);
-    Vector bd_outgoing = transformFromLocalCoordinateSpace(bd_localOutgoing, x, y, z);
-    if(dot(bd_outgoing, bd_lightNormal) < 0.0f)
-        bd_outgoing *= -1.0f;
-
-    //setup the first ray starting from the light
-    currentRay.m_origin = bd_lightPoint;
-    currentRay.m_direction = bd_outgoing;
-    currentRay.m_tMax = kRayTMax;
-
-    Intersection lastLightIntersection;
-    Color lightPathLightResult = Color(0.0f, 0.0f, 0.0f);
-
-    size_t numLightBounces = 0;
-    // While we have light bounces left...
-    while(numLightBounces < samplers.m_maxRayDepth){
-        // Trace the ray to see if we hit anything
-        Intersection intersection(currentRay);
-        if(!scene.intersect(intersection)){
-            // if we don't hit something, break
-            break;
-        }
-        lastLightIntersection = intersection;
-
-        // Add in emission?
-        //TODO?
-
-        // We DON'T need to do MIS since we're not looking for lights;
-        // we're looking for the eye path
-
-        // Evaluate the material and intersection information at this bounce
-        Point position = intersection.position();
-        Vector normal = intersection.m_normal;
-        Vector outgoing = currentRay.m_direction;
-        Bsdf* pBsdf = NULL;
-        float bsdfWeight = 1.0f;
-        Color matColor = intersection.m_pMaterial->evaluate(position,
-                                                            normal,
-                                                            outgoing,
-                                                            pBsdf,
-                                                            bsdfWeight);
-
-        // No BSDF? We can't evaluate lighting, so bail
-        if(pBsdf == NULL){
-            return result;
-        }
-
-        // If this is the first bounce, we need to evaluate the light result
-        if(numLightBounces == 0){
-            //get the light (pBDLightShape)
-            //the intersection color modifier
-            //the material color
-            //the brdf result
-            //the cosine weighting factor
-            lightPathLightResult = pBDLightShape->emitted();    //Is it this simple?
-        }
-
-        // Sample the BRDF to find the direction the next leg of the path goes in
-        float bsdfSampleU, bsdfSampleV;
-        samplers.m_lightBounceSamplers[numLightBounces]->sample2D(pixelSampleIndex, bsdfSampleU, bsdfSampleV);
-        Vector incoming;
-        float incomingBsdfPdf = 0.0f;
-        float incomingBsdfResult = pBsdf->sampleSA(incoming,
-                                                   outgoing,
-                                                   normal,
-                                                   bsdfSampleU,
-                                                   bsdfSampleV,
-                                                   incomingBsdfPdf);
-
-        // if the Bsdf's pdf is greater than 0
-        if(incomingBsdfPdf > 0.0f){
-            // setup the ray for the next iteration
-            currentRay.m_origin = position;
-            currentRay.m_direction = -incoming;
-            currentRay.m_tMax = kRayTMax;
-            // Reduce lighting effect for the next bounce based on this bounce's BRDF
-            throughputLight *= intersection.m_colorModifier * matColor * incomingBsdfResult *
-                            (std::fabs(dot(-incoming, normal)) /
-                             (incomingBsdfPdf * bsdfWeight));
-        }
-        // else
-        else{
-            // BSDF is zero; stop bouncing
-            break;
-        }
-
-        numLightBounces++;
-    }
-    // Fire a ray from the last point on the eye path to the last point on the light path
-    Point lastEyeVertex = lastEyeIntersection.position();       //last eye path point
-    Point lastLightVertex = (numLightBounces == 0)? bd_lightPoint : lastLightIntersection.position();   //last light path point
-    Vector connectDirection = lastEyeVertex - lastLightVertex;  //the direction from the light path to the eye path
-    float connectDistance = connectDirection.length();          //the distance between these vertices
-    connectDirection.normalize();
-
-    // If the connectDirection and the surface normal at the last light path vertex are in different hemispheres,
-    // then these surfaces are definitely not mutually visible
-    if(dot(connectDirection, lastLightIntersection.m_normal) < 0.0f){
-        return result;
-    }
-
-    // If the connectDirection and the surface normal at the last eye path vertex are in the same hemisphere,
-    // then these surfaces are definitely not mutually visible
-    if(dot(connectDirection, lastEyeIntersection.m_normal) > 0.0f){
-        return result;
-    }
-
-    // ask the last point on the eye path if it likes the connection direction
-    //the outgoing direction of light from the last eye vertex
-    Vector lastEyeOutgoing = -lastEyeIntersection.m_ray.m_direction;
-    //the surface normal of the last eye vertex
-    Vector lastEyeNormal = lastEyeIntersection.m_normal;
-    //the Brdf of the last eye vertex (pLastEyeBrdf)
-    float lastBsdfPdf = 0.0f;
-    float lastBsdfResult = pLastEyeBsdf->evaluateSA(connectDirection,
-                                                    lastEyeOutgoing,
-                                                    lastEyeNormal,
-                                                    lastBsdfPdf);
-    if(lastBsdfPdf > 0.0f && lastBsdfResult > 0.0f){
-        //create a ray that will connect these vertices
-        Ray connectRay = Ray(lastLightVertex, connectDirection, connectDistance, ray.m_time);
-
-        Intersection connectIntersection = Intersection(connectRay);
-        // If the ends of each path are mutually visible
-        if(!scene.intersect(connectIntersection)){
-
-            //TODO: What do we do with lastBsdfPdf??????
-
-            // add the contribution of the light path to the final result (using the eye path's last BRDF to get a pdf value)
-            // result += throughputEye * (1/distance squared)? * throughputLight * lightResult (lightResult is from the light path's first edge)
-            // We need to do distance attenuation, I think
-            result += throughputEye * (1.0f / (connectDistance * connectDistance)) * lastBsdfResult * throughputLight * lightPathLightResult;
-        }
-    }
-
-    // This represents an estimate of the total light coming in along the path
-    return result;
+    //return the result
 }
 
 Image* raytrace(ShapeSet& scene,

@@ -125,6 +125,7 @@ struct SamplerContainer
     
     unsigned int m_numLightSamples;
     unsigned int m_maxRayDepth; //the same for the eye path and the light path
+    unsigned int m_minRayDepth; //0 means there's no minimum. Should default to 0
 };
 
 
