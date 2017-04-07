@@ -76,7 +76,7 @@ protected:
         SamplerContainer samplers;
         samplers.m_numLightSamples = m_lights.empty() ? 0 : m_lightSamplesHint * m_lightSamplesHint;
         samplers.m_maxRayDepth = m_maxRayDepth;
-        samplers.m_minRayDepth = 3; //TODO: this should be adjustable
+        samplers.m_minRayDepth = 3; //TODO: this should be set by the GUI
         
         // Set up samplers for each of the ray bounces.  Each bounce will use
         // the same sampler for all pixel samples in the pixel to reduce noise.
@@ -116,6 +116,17 @@ protected:
         samplers.m_BDlightSampler = new CorrelatedMultiJitterSampler(m_pixelSamplesHint, m_pixelSamplesHint, rng, rng.nextUInt32());
         samplers.m_BDlightDirectionSampler = new CorrelatedMultiJitterSampler(m_pixelSamplesHint, m_pixelSamplesHint, rng, rng.nextUInt32());
         unsigned int totalPixelSamples = samplers.m_subpixelSampler->total2DSamplesAvailable();
+
+        // Set up the PathVertexContainer with the right number of entries
+        //TODO
+        //for (max ray depth)
+            //add zeros to geoTerms_L and geoTerms_E
+            //add false to isDirac_L and isDirac_E
+            //add zeros to PdfPsa_L and PdfPsa_E
+            //add (0,0,0)s to position_L and position_E
+            //add (0,0,0)s to normal_L and normal_E
+            //add (1,1,1)s to BSDF_L and BSDF_E
+            //add zeros to alpha_i_L and alpha_i_E
 
         // For each pixel row...
         for (size_t y = m_ystart; y < m_yend; ++y)
@@ -181,6 +192,10 @@ protected:
                 samplers.m_BDlightElementSampler->refill(rng.nextUInt32());
                 samplers.m_BDlightSampler->refill(rng.nextUInt32());
                 samplers.m_BDlightDirectionSampler->refill(rng.nextUInt32());
+
+                // Reset the PathVertexContainer for the next pixel sample?
+                //TODO
+                //set the isDirac vectors to false?
             }
         }
         
@@ -506,17 +521,11 @@ Color BDpathTrace(const Ray& ray,
                   std::vector<Shape*>& lights,
                   Rng& rng,
                   SamplerContainer& samplers,
+                  PathVertexContainer& path,
                   unsigned int pixelSampleIndex){
     //initialize the final result
     Color result = Color(0.0f, 0.0f, 0.0f);
-    //the length of these vectors should be samplers.m_maxRayDepth * 2
-    //initialize vector of geometric terms, edge_GeoTerm
-    //initialize vector of specular flags, vert_isDirac, set all to false
-    //initialize vector of PDFs with respect to Projected Solid Angle, vert_PDFPSA
-    //initialize vector of intersections, vert_intersection //Do we need this?
-    //initialize vector of vertex positions, vert_position
-    //initialize vector of vertex normals, vert_normal
-    //initialize vector of vertex BSDFs, vert_BSDF
+
 
     //BUILD A PATH STARTING FROM THE EYE
     //initialize the eye throughput (for russian roulette) to (1,1,1)
@@ -534,14 +543,14 @@ Color BDpathTrace(const Ray& ray,
         //Trace the ray to see if we hit anything
         //if we didn't
             //return background color
-        //store the intersection in vert_intersection????
         //evaluate the material and intersection information at this bounce
-        //set vert_position[nE]
-        //set vert_normal[nE]
-        //set vert_BSDF[nE]
-        //set edge_GeoTerm[nE-1]
+        //set vertex position[nE]
+        //set vertex normal[nE]
+        //set vertex BSDF[nE]
+        //set edge GeoTerm[nE-1]
+        //set vertex isDirac[nE] to false
         //if this BSDF is perfect specular
-            //set vert_isDirac[nE] to true
+            //set vertex isDirac[nE] to true
         //if this bounce is a light
             //WHAT DO WE DO?
             //we've found a light, so let's not look for another one
@@ -551,6 +560,12 @@ Color BDpathTrace(const Ray& ray,
             //update currentRay with the new direction and origin
         //else
             //we're done here, so break
+        //set vertex PdfPsa[nE]
+        //calculate Alpha E sub i: (Veach, pg 304)
+        //if nE is 0 (t is 1)
+            //Alpha E sub i is We^0(z0) / PA(z0)
+        //if nE is >= 1 (t >= 2)
+            //Alpha E sub i is BSDF(zi-1 -> zi-2 -> zi-3) / PSA(zi-2 -> zi-1) * Alpha E sub i-1
         //update the eye throughput //TODO
         //increment nE
         //increment numBounces
@@ -575,42 +590,58 @@ Color BDpathTrace(const Ray& ray,
             //break, but don't return
         //store the intersection in vert_intersection????
         //evaluate the material and intersection information at this bounce
-        //set vert_position[length - nL - 1]
-        //set vert_normal[length - nL - 1]
-        //set vert_BSDF[length - nL - 1]
-        //set edge_GeoTerm[length - nL]
+        //set lightpath vertex position [nL]
+        //set lightpath vertex normal[nL]
+        //set lightpath vertex BSDF[nL]
+        //set lightpath edge GeoTerm[nL]
+        //set lightpath vertex isDirac[nL] to false
         //if this BSDF is perfect specular
-            //set vert_isDirac[length - nL - 1] to true
+            //set lightpath vertex isDirac[nL] to true
         //if this bounce is a light
             //WHAT DO WE DO????
             //let's pretend it never happened and end the light path here
+            //TODO
         //Sample the BSDF to find the direction the next leg of the path goes in
         //if the BsdfPdf > 0
             //update currentRay with the new direction and origin
         //else
             //we're done here, so break
+        //set vertex PdfPsa[nL]
+        //calculate Alpha L sub i: (Veach, pg 304)
+        //if nL is 0 (s is 1)
+            //Alpha L sub i is Le^0(z0) / PA(y0)
+        //if nL is >= 1 (s >= 2)
+            //Alpha L sub i is BSDF(yi-3 -> yi-2 -> yi-1) / PSA(yi-2 -> yi-1) * Alpha L sub i-1
         //update the light throughput //TODO
         //increment nL
         //increment numBounces
 
     //BUILD VARIATIONS OF THE COMBINED PATHS
-    //for all possible values of S (0-nL)
-        //for all possible values of T (1-nE) (we start at 1 so that we don't create contributions for other pixels)
+    //for all possible values of S (0 -> nL)
+        //for all possible values of T (1 -> nE) (we start at 1 so that we don't create contributions for other pixels)
         //SUM THEIR CONTRIBUTIONS ACCORDING TO THEIR WEIGHTS AND PROBABILITY DISTRIBUTIONS
             //if vertex S or vertex T is a Dirac distribution
-                //skip this path
-            //calculate the geometric term for the connecting edge
-            //if it's 0
                 //skip this path
             //calculate the Pdf for connecting the vertex T to vertex S
             //if it's 0
                 //skip this path
             //calculate the MIS weight for this path, Wst (Veach, pg 306)
-            //if it's 0
-                //skip this path
-            //calculate Alpha_L_S (Veach, pg 304)
-            //calculate Alpha_E_T (Veach, pg 304)
+            //Set Pl to 1
+            //for (0 to S):
+                //Pl = Pl * PdfPsa_L[S (or something)]
+            //Set Pe to 1
+            //for (0 to T):
+                //Pe = Pe * PdfPsa_E[T (or something)]
+            //find Ps = (Pl * Pe)
+            //set Wst_denom to 0
+            //set Pi_Ps to 0
             //calculate Cst (Veach, pg 305)
+            //if s == 0
+                //Cst = Le(zt-1 -> zt-2)
+            //else if t == 0 (which it won't be)
+                //Cst = We(ys-2 -> ys-1)
+            //else
+                //Cst = BSDF(ys-2 -> ys-1 -> zt-1) * G(ys-1 <-> zt-1) * BSDF(ys-1 -> zt-1 -> zt-2)
             //add Cst * Alpha_L_S * Alpha_E_T to the result
 
     //return the result

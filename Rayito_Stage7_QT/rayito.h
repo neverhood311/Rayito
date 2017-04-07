@@ -125,9 +125,44 @@ struct SamplerContainer
     
     unsigned int m_numLightSamples;
     unsigned int m_maxRayDepth; //the same for the eye path and the light path
-    unsigned int m_minRayDepth; //0 means there's no minimum. Should default to 0
+    unsigned int m_minRayDepth; //0 means there's no minimum. Defaults to 3?
 };
 
+//
+// Path vertex container (for a given pixel subsample, holds the vectors for path vertex information)
+//
+
+struct PathVertexContainer
+{
+    //lightpath geometric terms, edge_GeoTerm_L[max ray depth]
+    std::vector<float> m_geoTerms_L;
+    //eyepath geometric terms, edge_GeoTerm_E[max ray depth]
+    std::vector<float> m_geoTerms_E;
+    //lightpath specular flags, vert_isDirac_L[max ray depth], set all to false
+    std::vector<bool> m_isDirac_L;
+    //eyepath specular flags, vert_isDirac_E[max ray depth], set all to false
+    std::vector<bool> m_isDirac_E;
+    //lightpath PDFs with respect to Projected Solid Angle, vert_PDFPSA_L[max ray depth]
+    std::vector<float> m_PdfPsa_L;
+    //eyepath PDFs with respect to Projected Solid Angle, vert_PDFPSA_E[max ray depth]
+    std::vector<float> m_PdfPsa_E;
+    //lightpath vertex positions, vert_position_L[max ray depth]
+    std::vector<Vector> m_position_L;
+    //eyepath vertex positions, vert_position_E[max ray depth]
+    std::vector<Vector> m_position_E;
+    //lightpath vertex normals, vert_normal_L[max ray depth]
+    std::vector<Vector> m_normal_L;
+    //eyepath vertex normals, vert_normal_E[max ray depth]
+    std::vector<Vector> m_normal_E;
+    //lightpath vertex BSDFs, vert_BSDF_L[max ray depth]
+    std::vector<Color> m_BSDF_L;
+    //eyepath vertex BSDFs, vert_BSDF_E[max ray depth]
+    std::vector<Color> m_BSDF_E;
+    //vertex Alpha L sub i values, vert_Alpha_L_i[max ray depth]
+    std::vector<float> m_alpha_i_L;
+    //vertex Alpha E sub i values, vert_Alpha_E_i[max ray depth]
+    std::vector<float> m_alpha_i_E;
+};
 
 //
 // Ray tracing
@@ -149,6 +184,7 @@ Color BDpathTrace(const Ray& ray,
                   std::vector<Shape*>& lights,
                   Rng& rng,
                   SamplerContainer& samplers,
+                  PathVertexContainer& path,
                   unsigned int pixelSampleIndex);
 
 // Generate a ray-traced image of the scene, with the given camera, resolution,
