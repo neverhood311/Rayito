@@ -125,8 +125,13 @@ protected:
             //add zeros to PdfPsa_L and PdfPsa_E
             //add (0,0,0)s to position_L and position_E
             //add (0,0,0)s to normal_L and normal_E
-            //add (1,1,1)s to BSDF_L and BSDF_E
+            //add (0,0,0)s to outdir_L and outdir_E
+            //add NULLs to BSDF_L and BSDF_E
+            //add (1,1,1)s to vert_Fs_L and vert_Fs_E
             //add zeros to alpha_i_L and alpha_i_E
+
+            //add two (0,0,0)s to xst_outdir
+            //add two zeros to xst_GeoTerm
 
         // For each pixel row...
         for (size_t y = m_ystart; y < m_yend; ++y)
@@ -529,37 +534,91 @@ Color BDpathTrace(const Ray& ray,
 
     //BUILD A PATH STARTING FROM THE EYE
     //initialize the eye throughput (for russian roulette) to (1,1,1)
+    Color eyeThroughput = Color(1.0f, 1.0f, 1.0f);
+    //Calculate We(0) and We(1)
+    //TODO
+    //Calculate PA(z0)
+    //TODO
     //set the first vert_position to the camera's position
+    path.m_position_E[0] = ray.m_origin;
+    //set the first raydir
+    path.m_outdir_E[0] = -ray.m_direction;
     //set the first vert_PDFPSA
+    path.m_PdfPsa_E[0] = 1.0f;
     //initialize the eye vertex count, nE, to 1
+    int nE = 1;
     //start with the initial ray from the camera
+    Ray currentRay = ray;
+    size_t numBounces = 0;
     //while depth < max depth
+    while(numBounces < samplers.m_maxRayDepth){
         //if numbounces > min depth, do russian roulette
+        if(numBounces > samplers.m_minRayDepth){
+            //TODO
             //get the maximum component of the eye throughput
             //get a random number
             //if the random number is greater than the max component
                 //you've been killed
                 //break
+        }
         //Trace the ray to see if we hit anything
+        Intersection intersection(currentRay);
         //if we didn't
-            //return background color
-        //evaluate the material and intersection information at this bounce
+        if(!scene.intersect(intersection)){
+            //end the eyepath here
+            break;
+        }
+        // Evaluate the material and intersection information at this bounce
         //set vertex position[nE]
+        Point position = path.m_position_E[nE] = intersection.position();
         //set vertex normal[nE]
+        Vector normal = path.m_normal_E[nE] = intersection.m_normal;
+        //set outdir_E[nE-1] (remember to negate it here)
+        Vector outgoing = path.m_outdir_E[nE] = -currentRay.m_direction;
+        Bsdf* pBsdf = NULL;
+        float bsdfWeight = 1.0f;
+        Color matColor = intersection.m_pMaterial->evaluate(position,
+                                                            normal,
+                                                            outgoing,
+                                                            pBsdf,
+                                                            bsdfWeight);
+        // No BSDF? We can't evaluate lighting, so bail.
+        if(pBsdf == NULL){
+            return result;
+        }
         //set vertex BSDF[nE]
+        path.m_BSDF_E[nE] = pBsdf;
         //set edge GeoTerm[nE-1]
-        //set vertex isDirac[nE] to false
-        //if this BSDF is perfect specular
-            //set vertex isDirac[nE] to true
+        //TODO
+        //set vertex isDirac[nE]
+        path.m_isDirac_E[nE] = pBsdf->isDiracDistribution();
         //if this bounce is a light
             //WHAT DO WE DO?
             //we've found a light, so let's not look for another one
             //set foundLight to true
         //Sample the BSDF to find the direction the next leg of the path goes in
+        float bsdfSampleU, bsdfSampleV;
+        samplers.m_bounceSamplers[numBounces]->sample2D(pixelSampleIndex, bsdfSampleU, bsdfSampleV);
+        Vector incoming;
+        float incomingBsdfPdf = 0.0f;
+        float incomingBsdfResult = pBsdf->sampleSA(incoming,
+                                                   outgoing,
+                                                   normal,
+                                                   bsdfSampleU,
+                                                   bsdfSampleV,
+                                                   incomingBsdfPdf);
         //if the BsdfPdf > 0
+        if(incomingBsdfPdf > 0.0f){
             //update currentRay with the new direction and origin
+            currentRay.m_origin = position;
+            currentRay.m_direction = -incoming;
+            currentRay.m_tMax = kRayTMax;
+        }
         //else
+        else{
             //we're done here, so break
+            break;
+        }
         //set vertex PdfPsa[nE]
         //calculate Alpha E sub i: (Veach, pg 304)
         //if nE is 0 (t is 1)
@@ -568,11 +627,16 @@ Color BDpathTrace(const Ray& ray,
             //Alpha E sub i is BSDF(zi-1 -> zi-2 -> zi-3) / PSA(zi-2 -> zi-1) * Alpha E sub i-1
         //update the eye throughput //TODO
         //increment nE
+        nE++;
         //increment numBounces
+        numBounces++;
+    }
 
     //BUILD A PATH STARTING FROM THE LIGHT
     //initialize the light throughput (for russian roulette) to (1,1,1)
     //Pick a random light and get a sample from it (a position and direction)
+    //Calculate Le(0) and Le(1)
+    //Calculate PA(y0)
     //set the last vert_position to the light's position
     //set the last vert_PDFPSA
     //initialize the light vertex count, nL, to 1
@@ -593,7 +657,8 @@ Color BDpathTrace(const Ray& ray,
         //set lightpath vertex position [nL]
         //set lightpath vertex normal[nL]
         //set lightpath vertex BSDF[nL]
-        //set lightpath edge GeoTerm[nL]
+        //set lightpath edge GeoTerm[nL-1]
+        //set outdir_L[nL-1]
         //set lightpath vertex isDirac[nL] to false
         //if this BSDF is perfect specular
             //set lightpath vertex isDirac[nL] to true
@@ -607,14 +672,21 @@ Color BDpathTrace(const Ray& ray,
         //else
             //we're done here, so break
         //set vertex PdfPsa[nL]
-        //calculate Alpha L sub i: (Veach, pg 304)
-        //if nL is 0 (s is 1)
+        //calculate Alpha L sub i[nL]: (Veach, pg 304)
+        //if nL is 1
             //Alpha L sub i is Le^0(z0) / PA(y0)
-        //if nL is >= 1 (s >= 2)
+        //if nL is 2
+            //Alpha L sub i is (Le(1) / PSA[0]) * Alpha L sub i[nL-1]
+        //else
             //Alpha L sub i is BSDF(yi-3 -> yi-2 -> yi-1) / PSA(yi-2 -> yi-1) * Alpha L sub i-1
+            //Alpha L sub i is (Fs_L[nL-2] / PSA[nL-2]) * Alpha L sub i[nL-1]
         //update the light throughput //TODO
         //increment nL
         //increment numBounces
+
+    //If we already found a light
+    //should we pretend it didn't happen?
+    //or should we just skip the creation of a light path?
 
     //BUILD VARIATIONS OF THE COMBINED PATHS
     //for all possible values of S (0 -> nL)
@@ -625,26 +697,45 @@ Color BDpathTrace(const Ray& ray,
             //calculate the Pdf for connecting the vertex T to vertex S
             //if it's 0
                 //skip this path
-            //calculate the MIS weight for this path, Wst (Veach, pg 306)
-            //Set Pl to 1
-            //for (0 to S):
-                //Pl = Pl * PdfPsa_L[S (or something)]
-            //Set Pe to 1
-            //for (0 to T):
-                //Pe = Pe * PdfPsa_E[T (or something)]
-            //find Ps = (Pl * Pe)
-            //set Wst_denom to 0
-            //set Pi_Ps to 0
+            //calculate the geometric term for the connecting edge
+            //if it's 0
+                //skip this path
+            // Create a combined path, X_st
+            //outgoing ray directions
+            //geometric terms
+            // Calculate the MIS weight for this path, Wst (Veach, pg 306)
+            //set p_sum to 1 (we're adding ps^2 to start)
+            //set p_cur to 1
+            //set p_next to 0
+            //set p_pre to 0
+            // Get the P_i values greater than P_s
+            //for idx from S+1 to S+T-1:
+                //p_next = (pdfPSA(x_idx-1 -> x_idx) * GeoTerm(x_idx-1 <-> x_idx)) / (pdfPSA(x_idx+1 -> x_idx) * GeoTerm(x_idx+1 <-> x_idx)) * p_cur
+                //p_sum += p_next^2
+                //p_cur = p_next
+            // Get P_k+1
+            //p_sum += ((pdfPSA(x_k-1 -> x_k) * GeoTerm(x_k-1 <-> x_k)) / (P_A(x_k))) ^ 2
+            // Get the P_i values smaller than P_s
+            //set p_cur to 1
+            //for idx from S-1 to 0:
+                //p_pre = (pdfPSA(x_idx+1 -> x_idx) * GeoTerm(x_idx+1 <-> x_idx)) / (pdfPSA(x_idx-1 -> x_idx) * GeoTerm(x_idx-1 <-> x_idx)) * p_cur
+                //p_sum += p_pre^2
+                //p_cur = p_pre
+            // Get P_0
+            //p_sum += ((pdfPSA(x_1 -> x_0) * GeoTerm(x_1 <-> x_0)) / (P_A(x_0))) ^ 2
+            //Wst = 1 / p_sum
+
             //calculate Cst (Veach, pg 305)
             //if s == 0
-                //Cst = Le(zt-1 -> zt-2)
+                //Cst = Le(z_t-1 -> z_t-2)
             //else if t == 0 (which it won't be)
-                //Cst = We(ys-2 -> ys-1)
+                //Cst = We(y_s-2 -> y_s-1)
             //else
-                //Cst = BSDF(ys-2 -> ys-1 -> zt-1) * G(ys-1 <-> zt-1) * BSDF(ys-1 -> zt-1 -> zt-2)
-            //add Cst * Alpha_L_S * Alpha_E_T to the result
+                //Cst = BSDF(y_s-2 -> y_s-1 -> z_t-1) * G(y_s-1 <-> z_t-1) * BSDF(y_s-1 -> z_t-1 -> z_t-2)
+            //add Wst * Cst * Alpha_L_S * Alpha_E_T to the result
 
     //return the result
+    return result;
 }
 
 Image* raytrace(ShapeSet& scene,

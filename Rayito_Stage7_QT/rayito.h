@@ -154,14 +154,27 @@ struct PathVertexContainer
     std::vector<Vector> m_normal_L;
     //eyepath vertex normals, vert_normal_E[max ray depth]
     std::vector<Vector> m_normal_E;
+    //lightpath vertex outgoing ray direction, vert_outdir_L[max ray depth]
+    std::vector<Vector> m_outdir_L;
+    //eyepath vertex outgoing ray direction, vert_outdir_E[max ray depth]
+    std::vector<Vector> m_outdir_E;
     //lightpath vertex BSDFs, vert_BSDF_L[max ray depth]
-    std::vector<Color> m_BSDF_L;
+    std::vector<Bsdf*> m_BSDF_L;
     //eyepath vertex BSDFs, vert_BSDF_E[max ray depth]
-    std::vector<Color> m_BSDF_E;
+    std::vector<Bsdf*> m_BSDF_E;
+    //lightpath vertex BSDF evaluation, vert_Fs_L[max ray depth]
+    std::vector<Color> m_vert_Fs_L;
+    //eyepath vertex BSDF evaluation, vert_Fs_E[max ray depth]
+    std::vector<Color> m_vert_Fs_E;
     //vertex Alpha L sub i values, vert_Alpha_L_i[max ray depth]
     std::vector<float> m_alpha_i_L;
     //vertex Alpha E sub i values, vert_Alpha_E_i[max ray depth]
     std::vector<float> m_alpha_i_E;
+
+    //combined path outgoing ray directions, xst_outdir[max ray depth * 2]
+    std::vector<Vector> m_xst_outdir;
+    //combined path Geometric terms, xst_GeoTerm[max ray depth * 2]
+    std::vector<float> m_xst_GeoTerm;
 };
 
 //
