@@ -116,6 +116,9 @@ struct SamplerContainer
     std::vector<Sampler*> m_bounceSamplers;
     // add a light bounce sampler for bidirectional path tracing (sampled once per light path bounce)
     std::vector<Sampler*> m_lightBounceSamplers;
+    // These are for russian roulette on the eye and light paths (sampled at most once per bounce)
+    std::vector<Sampler*> m_eyepathRussianRouletteSamplers;
+    std::vector<Sampler*> m_lightpathRussianRouletteSamplers;
 
     // These are sampled N times per bounce (once for each light sample)
     std::vector<Sampler*> m_lightSelectionSamplers; //pick a light
@@ -167,14 +170,18 @@ struct PathVertexContainer
     //eyepath vertex BSDF evaluation, vert_Fs_E[max ray depth]
     std::vector<Color> m_vert_Fs_E;
     //vertex Alpha L sub i values, vert_Alpha_L_i[max ray depth]
-    std::vector<float> m_alpha_i_L;
+    std::vector<Color> m_alpha_i_L;
     //vertex Alpha E sub i values, vert_Alpha_E_i[max ray depth]
-    std::vector<float> m_alpha_i_E;
+    std::vector<Color> m_alpha_i_E;
 
     //combined path outgoing ray directions, xst_outdir[max ray depth * 2]
     std::vector<Vector> m_xst_outdir;
     //combined path Geometric terms, xst_GeoTerm[max ray depth * 2]
     std::vector<float> m_xst_GeoTerm;
+    //combined path Bsdfs, xst_Bsdf[max ray depth * 2]
+    std::vector<Bsdf*> m_xst_Bsdf;
+    //combined path normals, xst_normal[max ray depth * 2]
+    std::vector<Vector> m_xst_normal;
 };
 
 //

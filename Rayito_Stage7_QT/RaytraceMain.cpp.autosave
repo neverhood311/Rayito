@@ -934,7 +934,7 @@ Color BDpathTrace(const Ray& ray,
                 float pdf_negTo0 = path.m_xst_Bsdf[idx]->pdfPSA(-path.m_xst_outdir[idx-2], path.m_xst_outdir[idx-1], path.m_xst_normal[idx-1]);
                 float pdf_posTo0 = path.m_xst_Bsdf[idx]->pdfPSA(-path.m_xst_outdir[idx], path.m_xst_outdir[idx-1], path.m_xst_normal[idx]);
                 //p_next = (pdfPSA(x_idx-1 -> x_idx) * GeoTerm(x_idx-1 <-> x_idx)) / (pdfPSA(x_idx+1 -> x_idx) * GeoTerm(x_idx+1 <-> x_idx)) * p_cur
-                //TODO
+                p_next = ((pdf_negTo0 * path.m_xst_GeoTerm[idx-1]) / (pdf_posTo0 * path.m_xst_GeoTerm[idx])) * p_cur;
                 //p_sum += p_next^2
                 p_sum += p_next * p_next;
                 //p_cur = p_next
