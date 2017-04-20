@@ -50,7 +50,12 @@ struct Color
         m_b = std::max(min, std::min(max, m_b));
     }
     
-    
+    void set(const Color& c){
+        m_r = c.m_r;
+        m_g = c.m_g;
+        m_b = c.m_b;
+    }
+
     Color& operator =(const Color& c)
     {
         m_r = c.m_r;
@@ -186,7 +191,12 @@ struct Vector
     Vector(float x, float y, float z) : m_x(x), m_y(y), m_z(z)             { }
     explicit Vector(float f)          : m_x(f), m_y(f), m_z(f)             { }
     
-    
+    void set(const Vector& v){
+        m_x = v.m_x;
+        m_y = v.m_y;
+        m_z = v.m_z;
+    }
+
     float length2() const { return m_x * m_x + m_y * m_y + m_z * m_z; }
     float length()  const { return std::sqrt(length2()); }
     

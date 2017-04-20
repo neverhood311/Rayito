@@ -138,50 +138,58 @@ struct SamplerContainer
 struct PathVertexContainer
 {
     //lightpath geometric terms, edge_GeoTerm_L[max ray depth]
-    std::vector<float> m_geoTerms_L;
+    //std::vector<float> m_geoTerms_L;
     //eyepath geometric terms, edge_GeoTerm_E[max ray depth]
-    std::vector<float> m_geoTerms_E;
+    //std::vector<float> m_geoTerms_E;
     //lightpath specular flags, vert_isDirac_L[max ray depth], set all to false
-    std::vector<bool> m_isDirac_L;
+    std::vector<bool> m_vert_isDirac_L;
     //eyepath specular flags, vert_isDirac_E[max ray depth], set all to false
-    std::vector<bool> m_isDirac_E;
+    std::vector<bool> m_vert_isDirac_E;
     //lightpath PDFs with respect to Projected Solid Angle, vert_PDFPSA_L[max ray depth]
     std::vector<float> m_PdfPsa_L;
     //eyepath PDFs with respect to Projected Solid Angle, vert_PDFPSA_E[max ray depth]
     std::vector<float> m_PdfPsa_E;
     //lightpath vertex positions, vert_position_L[max ray depth]
-    std::vector<Vector> m_position_L;
+    std::vector<Point*> m_vert_position_L;
     //eyepath vertex positions, vert_position_E[max ray depth]
-    std::vector<Vector> m_position_E;
+    std::vector<Point*> m_vert_position_E;
     //lightpath vertex normals, vert_normal_L[max ray depth]
-    std::vector<Vector> m_normal_L;
+    std::vector<Vector*> m_vert_normal_L;
     //eyepath vertex normals, vert_normal_E[max ray depth]
-    std::vector<Vector> m_normal_E;
+    std::vector<Vector*> m_vert_normal_E;
     //lightpath vertex outgoing ray direction, vert_outdir_L[max ray depth]
-    std::vector<Vector> m_outdir_L;
+    std::vector<Vector*> m_outdir_L;
     //eyepath vertex outgoing ray direction, vert_outdir_E[max ray depth]
-    std::vector<Vector> m_outdir_E;
+    std::vector<Vector*> m_outdir_E;
     //lightpath vertex BSDFs, vert_BSDF_L[max ray depth]
-    std::vector<Bsdf*> m_BSDF_L;
+    std::vector<Bsdf*> m_vert_BSDF_L;
     //eyepath vertex BSDFs, vert_BSDF_E[max ray depth]
-    std::vector<Bsdf*> m_BSDF_E;
+    std::vector<Bsdf*> m_vert_BSDF_E;
+    //lightpath vertex material color, vert_matColor_L[max ray depth]
+    std::vector<Color*> m_vert_matColor_L;
+    //eyepath vertex material color, vert_matColor_L[max ray depth]
+    std::vector<Color*> m_vert_matColor_E;
     //lightpath vertex BSDF evaluation, vert_Fs_L[max ray depth]
-    std::vector<Color> m_vert_Fs_L;
+    std::vector<Color*> m_vert_Fs_L;
     //eyepath vertex BSDF evaluation, vert_Fs_E[max ray depth]
-    std::vector<Color> m_vert_Fs_E;
+    std::vector<Color*> m_vert_Fs_E;
     //vertex Alpha L sub i values, vert_Alpha_L_i[max ray depth]
-    std::vector<Color> m_alpha_i_L;
+    //std::vector<Color> m_alpha_i_L;
     //vertex Alpha E sub i values, vert_Alpha_E_i[max ray depth]
-    std::vector<Color> m_alpha_i_E;
+    //std::vector<Color> m_alpha_i_E;
+    //lightpath vertex probability with respect to surface area, vert_PA_L[max ray depth]
+    std::vector<float> m_vert_PA_L;
+    //eyepath vertex probability with respect to surface area, vert_PA_E[max ray depth]
+    std::vector<float> m_vert_PA_E;
 
     //combined path outgoing ray directions, xst_outdir[max ray depth * 2]
-    std::vector<Vector> m_xst_outdir;
+    //std::vector<Vector> m_xst_outdir;
     //combined path Geometric terms, xst_GeoTerm[max ray depth * 2]
-    std::vector<float> m_xst_GeoTerm;
+    //std::vector<float> m_xst_GeoTerm;
     //combined path Bsdfs, xst_Bsdf[max ray depth * 2]
-    std::vector<Bsdf*> m_xst_Bsdf;
+    //std::vector<Bsdf*> m_xst_Bsdf;
     //combined path normals, xst_normal[max ray depth * 2]
-    std::vector<Vector> m_xst_normal;
+    //std::vector<Vector> m_xst_normal;
 };
 
 //

@@ -237,6 +237,11 @@ public:
         }
         return 0.0f;
     }
+
+    virtual float surfaceAreaPdf() const{
+        float area = cross(m_side1, m_side2).normalize();
+        return 1.0f / area;
+    }
     
 protected:
     Point m_position;
@@ -325,6 +330,10 @@ public:
                                    isect.m_normal);
         }
         return 0.0f;
+    }
+
+    virtual float surfaceAreaPdf() const{
+        return m_pShape->surfaceAreaPdf();
     }
     
 protected:

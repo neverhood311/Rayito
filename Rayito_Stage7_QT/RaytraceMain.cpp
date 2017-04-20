@@ -128,20 +128,37 @@ protected:
         unsigned int totalPixelSamples = samplers.m_subpixelSampler->total2DSamplesAvailable();
 
         // Set up the PathVertexContainer with the right number of entries
-        //TODO
+        PathVertexContainer path;
         //for (max ray depth)
-            //add zeros to geoTerms_L and geoTerms_E
+        for(size_t i = 0; i < m_maxRayDepth+1; i++){
             //add false to isDirac_L and isDirac_E
+            path.m_vert_isDirac_L.push_back(false);
+            path.m_vert_isDirac_E.push_back(false);
             //add zeros to PdfPsa_L and PdfPsa_E
+            path.m_PdfPsa_L.push_back(0.0f);
+            path.m_PdfPsa_E.push_back(0.0f);
             //add (0,0,0)s to position_L and position_E
+            path.m_vert_position_L.push_back(new Vector(0.0f));
+            path.m_vert_position_E.push_back(new Vector(0.0f));
             //add (0,0,0)s to normal_L and normal_E
+            path.m_vert_normal_L.push_back(new Vector(0.0f));
+            path.m_vert_normal_E.push_back(new Vector(0.0f));
             //add (0,0,0)s to outdir_L and outdir_E
+            path.m_outdir_L.push_back(new Vector(0.0f));
+            path.m_outdir_E.push_back(new Vector(0.0f));
             //add NULLs to BSDF_L and BSDF_E
+            path.m_vert_BSDF_L.push_back(NULL);
+            path.m_vert_BSDF_E.push_back(NULL);
+            //add (1,1,1)s to matColor_L and matColor_E
+            path.m_vert_matColor_L.push_back(new Color(1.0f, 1.0f, 1.0f));
+            path.m_vert_matColor_E.push_back(new Color(1.0f, 1.0f, 1.0f));
             //add (1,1,1)s to vert_Fs_L and vert_Fs_E
-            //add zeros to alpha_i_L and alpha_i_E
-
-            //add two (0,0,0)s to xst_outdir
-            //add two zeros to xst_GeoTerm
+            path.m_vert_Fs_L.push_back(new Color(1.0f, 1.0f, 1.0f));
+            path.m_vert_Fs_E.push_back(new Color(1.0f, 1.0f, 1.0f));
+            //add zeros to vert_PA_L and vert_PA_E
+            path.m_vert_PA_L.push_back(0.0f);
+            path.m_vert_PA_E.push_back(0.0f);
+        }
 
         // For each pixel row...
         for (size_t y = m_ystart; y < m_yend; ++y)
@@ -177,11 +194,12 @@ protected:
                                                timeU);
                     
                     // Trace a path out, gathering estimated radiance along the path
-                    pixelColor += pathTrace(ray,
+                    pixelColor += BDpathTrace(ray,
                                             m_masterSet,
                                             m_lights,
                                             rng,
                                             samplers,
+                                            path,
                                             psi);
                 }
                 // Divide by the number of pixel samples (a box pixel filter, essentially)
@@ -199,6 +217,10 @@ protected:
                     samplers.m_lightSamplers[i]->refill(rng.nextUInt32());
                     samplers.m_bsdfSamplers[i]->refill(rng.nextUInt32());
                     samplers.m_lightBounceSamplers[i]->refill(rng.nextUInt32());
+                }
+                for(size_t i = 0; i < m_maxRayDepth - samplers.m_minRayDepth; i++){
+                    samplers.m_eyepathRussianRouletteSamplers[i]->refill(rng.nextUInt32());
+                    samplers.m_lightpathRussianRouletteSamplers[i]->refill(rng.nextUInt32());
                 }
                 samplers.m_lensSampler->refill(rng.nextUInt32());
                 samplers.m_timeSampler->refill(rng.nextUInt32());
@@ -235,6 +257,20 @@ protected:
         delete samplers.m_BDlightElementSampler;
         delete samplers.m_BDlightSampler;
         delete samplers.m_BDlightDirectionSampler;
+
+        // Deallocate path Vectors and Colors
+        for(size_t i = 0; i < m_maxRayDepth+1; i++){
+            delete path.m_outdir_L[i];
+            delete path.m_outdir_E[i];
+            delete path.m_vert_Fs_L[i];
+            delete path.m_vert_Fs_E[i];
+            delete path.m_vert_position_L[i];
+            delete path.m_vert_position_E[i];
+            delete path.m_vert_normal_L[i];
+            delete path.m_vert_normal_E[i];
+            delete path.m_vert_matColor_L[i];
+            delete path.m_vert_matColor_E[i];
+        }
     }
     
     size_t m_xstart, m_xend, m_ystart, m_yend;
@@ -545,35 +581,15 @@ Color BDpathTrace(const Ray& ray,
     //initialize the final result
     Color result = Color(0.0f, 0.0f, 0.0f);
 
-
     //BUILD A PATH STARTING FROM THE EYE
     //initialize the eye throughput (for russian roulette) to (1,1,1)
     Color eyeThroughput = Color(1.0f, 1.0f, 1.0f);
-    //Calculate We(0) and We(1)
-    Color We0 = Color(1.0f);   //TODO: calculate this
-    Color We1 = Color(1.0f);   //TODO: calculate this
-    //Calculate PA(z0)
-    float PAz0 = 1.0f;  //TODO: calculate this. It might be the area of the lens / the total area of the scene
-    // Set Alpha_E[0,1,2]
-    //Alpha_E[0] is 1
-    path.m_alpha_i_E[0] = Color(1.0f);
-    //Alpha_E[1] is (We(0)(z0)) / (PA(z0))
-    path.m_alpha_i_E[1] = We0 / PAz0;
-    //Alpha_E[2] is (We(1) / (P(ray hitting the lens)) * Alpha_E[1]
-    path.m_alpha_i_E[2] = (We1 / (1.0f / M_PI)) * path.m_alpha_i_E[1];    //TODO: is this right?
-    // Set Fs_E[0] to We(1)
-    path.m_vert_Fs_E[0] = Color(We1);
 
     //set the first vert_position to the camera's position
-    path.m_position_E[0] = ray.m_origin;
+    path.m_vert_position_E[0]->set(ray.m_origin);
     //set the first raydir
-    path.m_outdir_E[0] = -ray.m_direction;
-    //set the first vert_PDFPSA
-    path.m_PdfPsa_E[0] = 1.0f;
+    path.m_outdir_E[0]->set(-ray.m_direction);
 
-    // Set up cosThetaOut and cosThetaPrimeIn
-    float cosThetaOut;
-    float cosThetaPrimeIn = 1.0f;
     //initialize the eye vertex count, nE, to 1
     size_t nE = 1;
     //start with the initial ray from the camera
@@ -582,12 +598,11 @@ Color BDpathTrace(const Ray& ray,
     //while depth < max depth
     while(numBounces < samplers.m_maxRayDepth){
         //if numbounces >= min depth, do russian roulette
-        if(numBounces >= samplers.m_minRayDepth){
+        if(false && numBounces >= samplers.m_minRayDepth){
             //get the maximum component of the eye throughput
             float maxComp = std::max(std::max(eyeThroughput.m_r, eyeThroughput.m_g), eyeThroughput.m_b);
             //get a random number
-            float rrSample;
-            samplers.m_eyepathRussianRouletteSamplers[numBounces - samplers.m_minRayDepth]->sample1D(pixelSampleIndex, rrSample);
+            float rrSample = samplers.m_eyepathRussianRouletteSamplers[numBounces - samplers.m_minRayDepth]->sample1D(pixelSampleIndex);
             //if the random number is greater than the max component
             if(rrSample > maxComp){
                 //you've been killed
@@ -603,16 +618,14 @@ Color BDpathTrace(const Ray& ray,
         }
         // Evaluate the material and intersection information at this bounce
         //set vertex position[nE]
-        Point position = path.m_position_E[nE] = intersection.position();
+        Point position = *path.m_vert_position_E[nE] = intersection.position();
         //set vertex normal[nE]
-        Vector normal = path.m_normal_E[nE] = intersection.m_normal;
+        Vector normal = *path.m_vert_normal_E[nE] = intersection.m_normal;
         //set outdir_E[nE-1] (remember to negate it here)
-        Vector outgoing = path.m_outdir_E[nE] = -currentRay.m_direction;
-        //calculate cos(theta_o)
-        cosThetaOut = dot(outgoing, normal);    //this is the outgoing direction from the point we just intersected
+        Vector outgoing = *path.m_outdir_E[nE-1] = -currentRay.m_direction;
         Bsdf* pBsdf = NULL;
         float bsdfWeight = 1.0f;
-        Color matColor = intersection.m_pMaterial->evaluate(position,
+        Color matColor = *path.m_vert_matColor_E[nE] = intersection.m_pMaterial->evaluate(position,
                                                             normal,
                                                             outgoing,
                                                             pBsdf,
@@ -622,15 +635,16 @@ Color BDpathTrace(const Ray& ray,
             break;
         }
         //set vertex BSDF[nE]
-        path.m_BSDF_E[nE] = pBsdf;
+        path.m_vert_BSDF_E[nE] = pBsdf;
 
         //set vertex isDirac[nE]
-        path.m_isDirac_E[nE] = pBsdf->isDiracDistribution();
+        path.m_vert_isDirac_E[nE] = pBsdf->isDiracDistribution();
 
         //if this bounce is a light
-            //WHAT DO WE DO?
-            //we've found a light, so let's not look for another one
-            //set foundLight to true
+        if(intersection.m_pShape->isLight()){
+            //let's just pretend this never happened...
+            break;
+        }
 
         //Sample the BSDF to find the direction the next leg of the path goes in
         float bsdfSampleU, bsdfSampleV;
@@ -644,9 +658,7 @@ Color BDpathTrace(const Ray& ray,
                                                    bsdfSampleV,
                                                    incomingBsdfPdf);
         //set vertex Fs
-        path.m_vert_Fs_E[nE] = incomingBsdfResult * matColor;
-        //set edge GeoTerm[nE-1] to abs(cos(theta_o) * cos(theta'_i)) / (distance between points)^2
-        path.m_geoTerms_E[nE-1] = std::fabs(cosThetaOut * cosThetaPrimeIn) / (position - currentRay.m_origin).length2();
+        path.m_vert_Fs_E[nE]->set(incomingBsdfResult * matColor * intersection.m_colorModifier);
         //if the BsdfPdf > 0
         if(incomingBsdfPdf > 0.0f){
             //update currentRay with the new direction and origin
@@ -659,13 +671,13 @@ Color BDpathTrace(const Ray& ray,
             //we're done here, so break
             break;
         }
-        //Calculate cos(theta'_i) for the next bounce
-        cosThetaPrimeIn = dot(incoming, normal);
         //set vertex PdfPsa_E[nE]
-        path.m_PdfPsa_E[nE] = incomingBsdfPdf;
-        //calculate Alpha E sub i: (Veach, pg 304)
-        //Alpha E sub i is BSDF(zi-1 -> zi-2 -> zi-3) / PSA(zi-2 -> zi-1) * Alpha E sub i-1
-        path.m_alpha_i_E[nE+2] = (path.m_vert_Fs_E[nE] / path.m_PdfPsa_E[nE]) * path.m_alpha_i_E[nE+1];
+        path.m_PdfPsa_E[nE-1] = incomingBsdfPdf;
+        //set eyepath PA[nE-1] to the PdfPSA_E we just calculated * the previous PA_E entry
+        path.m_vert_PA_E[nE-1] = path.m_PdfPsa_E[nE-1];
+        if(nE > 1){
+            path.m_vert_PA_E[nE-1] *= path.m_vert_PA_E[nE-2];
+        }
         //update the eye throughput
         eyeThroughput *= intersection.m_colorModifier * matColor * incomingBsdfResult *
                         (std::fabs(dot(-incoming, normal)) /
@@ -685,7 +697,6 @@ Color BDpathTrace(const Ray& ray,
     //If we already found a light
     //should we pretend it didn't happen?
     //or should we just skip the creation of a light path?
-
 
     //BUILD A PATH STARTING FROM THE LIGHT
     //initialize the light throughput (for russian roulette) to (1,1,1)
@@ -729,28 +740,18 @@ Color BDpathTrace(const Ray& ray,
     currentRay.m_direction = bd_outgoing;
     currentRay.m_tMax = kRayTMax;
 
-    //Calculate Le(0) and Le(1)
-    Color Le0 = Color(1.0f);   //TODO: calculate this
-    Color Le1 = Color(1.0f);   //TODO: calculate this
     //Calculate PA(y0)
-    float PAy0 = 1.0f;  //TODO: calculate this
-    // Set Alpha_L[0,1,2]
-    //Alpha_L[0] is 1
-    path.m_alpha_i_L[0] = Color(1.0f);
-    //Alpha_L[1] is Le(0)(x0) / PA(y0)
-    path.m_alpha_i_L[1] = Le0 / PAy0;
-    //Alpha_L[2] is (Le(1) / P(ray hitting the light)) * Alpha_L[1]
-    path.m_alpha_i_L[2] = (Le1 / PAy0) * path.m_alpha_i_L[1];
-
+    float PAy0 = pBDLightShape->surfaceAreaPdf();
     //set the last vert_position to the light's position
-    path.m_position_L[0] = currentRay.m_origin;
+    path.m_vert_position_L[0]->set(currentRay.m_origin);
     //set the first raydir
-    path.m_outdir_L[0] = currentRay.m_direction;
-    // Set up cosThetaOut and cosThetaPrimeIn
-    cosThetaOut = dot(bd_outgoing, bd_lightNormal);
-    //set the first vert_PDFPSA_L
-    //take the dummyLightPdf and convert it to Projected Solid Angle?
-    path.m_PdfPsa_L[0] = dummyLightPdf * cosThetaOut;
+    path.m_outdir_L[0]->set(currentRay.m_direction);
+    //set the first PDFPSA_L
+    path.m_PdfPsa_L[0] = 1.0f / M_PI;   //TODO: is this right?
+
+    //set the first vert_PA_L
+    //path.m_vert_PA_L[0] = probability of selecting the light
+    path.m_vert_PA_L[0] = PAy0;
 
     //initialize the light vertex count, nL, to 1
     size_t nL = 1;
@@ -758,12 +759,11 @@ Color BDpathTrace(const Ray& ray,
     //while depth < max depth
     while(numBounces < samplers.m_maxRayDepth){
         //if numbounces > min depth, do russian roulette
-        if(numBounces >= samplers.m_minRayDepth){
+        if(false && numBounces >= samplers.m_minRayDepth){
             //get the maximum component of the light throughput
             float maxComp = std::max(std::max(lightThroughput.m_r, lightThroughput.m_g), lightThroughput.m_b);
             //get a random number
-            float rrSample;
-            samplers.m_lightpathRussianRouletteSamplers[numBounces - samplers.m_minRayDepth]->sample1D(pixelSampleIndex, rrSample);
+            float rrSample = samplers.m_lightpathRussianRouletteSamplers[numBounces - samplers.m_minRayDepth]->sample1D(pixelSampleIndex);
             //if the random number is greater than the max component
             if(rrSample > maxComp){
                 //you've been killed
@@ -780,16 +780,16 @@ Color BDpathTrace(const Ray& ray,
         }
         //evaluate the material and intersection information at this bounce
         //set lightpath vertex position [nL]
-        Point position = path.m_position_L[nL] = intersection.position();
+        Point position = *path.m_vert_position_L[nL] = intersection.position();
         //set lightpath vertex normal[nL]
-        Vector normal = path.m_normal_L[nL] = intersection.m_normal;
+        Vector normal = *path.m_vert_normal_L[nL] = intersection.m_normal;
         //set outdir_L[nL-1]
-        Vector outgoing = path.m_outdir_L[nL] = currentRay.m_direction;
+        Vector outgoing = *path.m_outdir_L[nL] = currentRay.m_direction;    //TODO: should this be -m_direction?
         Bsdf* pBsdf = NULL;
         float bsdfWeight = 1.0f;
-        Color matColor = intersection.m_pMaterial->evaluate(position,
+        Color matColor = *path.m_vert_matColor_L[nL] = intersection.m_pMaterial->evaluate(position,
                                                             normal,
-                                                            outgoing,
+                                                            outgoing,   //TODO: should this be -outgoing?
                                                             pBsdf,
                                                             bsdfWeight);
         // No BSDF? We can't evaluate lighting, so bail.
@@ -797,18 +797,17 @@ Color BDpathTrace(const Ray& ray,
             break;
         }
         //set lightpath vertex BSDF[nL]
-        path.m_BSDF_L[nL] = pBsdf;
-        //calculate cos(theta'_i)
-        cosThetaPrimeIn = dot(-outgoing, normal);
-        //set lightpath edge GeoTerm[nL-1]
-        path.m_geoTerms_L[nL-1] = std::fabs(cosThetaOut * cosThetaPrimeIn) / (position - currentRay.m_origin).length2();
+        path.m_vert_BSDF_L[nL] = pBsdf;
+
         //set lightpath vertex isDirac[nL]
-        path.m_isDirac_L[nL] = pBsdf->isDiracDistribution();
+        path.m_vert_isDirac_L[nL] = pBsdf->isDiracDistribution();
+
 
         //if this bounce is a light
-            //WHAT DO WE DO????
+        if(intersection.m_pShape->isLight()){
             //let's pretend it never happened and end the light path here
-            //TODO
+            break;
+        }
 
         //Sample the BSDF to find the direction the next leg of the path goes in
         float bsdfSampleU, bsdfSampleV;
@@ -816,14 +815,14 @@ Color BDpathTrace(const Ray& ray,
         Vector incoming;
         float incomingBsdfPdf = 0.0f;
         float incomingBsdfResult = pBsdf->samplePSA(incoming,
-                                                    outgoing,
+                                                    outgoing,   //TODO: should this be -outgoing?
                                                     normal,
                                                     bsdfSampleU,
                                                     bsdfSampleV,
                                                     incomingBsdfPdf);
 
         //set vertex Fs
-        path.m_vert_Fs_L[nL] = incomingBsdfResult * matColor;
+        path.m_vert_Fs_L[nL]->set(incomingBsdfResult * matColor * intersection.m_colorModifier);
         //if the BsdfPdf > 0
         if(incomingBsdfPdf > 0.0f){
             //update currentRay with the new direction and origin
@@ -838,10 +837,9 @@ Color BDpathTrace(const Ray& ray,
         }
         //set vertex PdfPsa[nL]
         path.m_PdfPsa_L[nL] = incomingBsdfPdf;
-        //calculate Alpha L sub i[nL+2]: (Veach, pg 304)
-        //Alpha L sub i is BSDF(yi-3 -> yi-2 -> yi-1) / PSA(yi-2 -> yi-1) * Alpha L sub i-1
-        //Alpha L sub i is (Fs_L[nL-2] / PSA[nL-2]) * Alpha L sub i[nL-1]
-        path.m_alpha_i_L[nL+2] = (path.m_vert_Fs_L[nL] / path.m_PdfPsa_L[nL]) * path.m_alpha_i_L[nL+1];
+        //set lightpath PA[nL] to the PdfPSA_L we just calculated * the previous PA_L entry
+        path.m_vert_PA_L[nL] = path.m_PdfPsa_L[nL] * path.m_vert_PA_L[nL-1];
+
         //update the light throughput
         lightThroughput *= intersection.m_colorModifier * matColor * incomingBsdfResult *
                             (std::fabs(dot(-incoming, normal)) /
@@ -853,128 +851,89 @@ Color BDpathTrace(const Ray& ray,
     }
 
     //BUILD VARIATIONS OF THE COMBINED PATHS
-    //for all possible values of S (0 -> nL)
-    for(size_t S = 0; S <= nL; S++){
-        //for all possible values of T (2 -> nE) (we start at 1 so that we don't create contributions for other pixels)
-        for(size_t T = 2; T <= nE; T++){
+    float subpathWeight = 1.0f / (float)(nL * (nE-1));
+    //for all vertices in the lightpath
+    for(size_t subL = 1; subL <= nL; subL++){
+        //for all vertices in the eyepath (except we don't want to start with only the lens so we only contribute to this pixel)
+        for(size_t subE = 2; subE <= nE; subE++){
         //SUM THEIR CONTRIBUTIONS ACCORDING TO THEIR WEIGHTS AND PROBABILITY DISTRIBUTIONS
-            //get the indices for vertices S and T
-            size_t sVertIdx = S > 0? S-1 : 0;
-            size_t tVertIdx = T > 0? T-1 : 0;
-            //if vertex S or vertex T is a Dirac distribution
-            if(path.m_isDirac_E[tVertIdx] || path.m_isDirac_L[sVertIdx]){
+            //get the indices for vertices subL and subE
+            size_t lVertIdx = subL - 1;
+            size_t eVertIdx = subE - 1;
+            //if vertex L or vertex E is a Dirac distribution
+            if(path.m_vert_isDirac_E[eVertIdx] || path.m_vert_isDirac_L[lVertIdx]){
                 //skip this path
                 continue;
             }
-            Vector StoT = path.m_position_E[tVertIdx] - path.m_position_L[sVertIdx];
-            Vector StoTDir = StoT.normalized();
-            //calculate the Pdf for connecting the vertex T to vertex S
-            float connectPdf = 0.0f;
-            float connectingBsdfResult = path.m_BSDF_L[sVertIdx]->evaluatePSA(-path.m_outdir_L[sVertIdx-1],
-                                                                                StoTDir,
-                                                                                path.m_normal_L[sVertIdx],
-                                                                                connectPdf);
+            Vector LtoE = *path.m_vert_position_E[eVertIdx] - *path.m_vert_position_L[lVertIdx];
+            Vector LtoEDir = LtoE.normalized();
+            //calculate the Pdf for connecting from vertex subL to subE
+            float connectPdf_L = 0.0f;
+            float connectingBsdfResult_L;
+            //if it's just the light
+            if(subL == 1){
+                //we'll just assume a constant PDF
+                connectingBsdfResult_L = 1.0f / M_PI;    //TODO: Is this right?
+            }
+            else{
+                connectingBsdfResult_L = path.m_vert_BSDF_L[lVertIdx]->evaluatePSA(-*path.m_outdir_L[lVertIdx-1],
+                                                                                LtoEDir,
+                                                                                *path.m_vert_normal_L[lVertIdx],
+                                                                                connectPdf_L);
+            }
             //if it's 0
-            if(connectPdf == 0.0f || connectingBsdfResult == 0.0f){
+            if(connectPdf_L == 0.0f || connectingBsdfResult_L == 0.0f){
                 //skip this path
+                continue;
+            }
+            //calculate the Pdf for subE to subE-1 with the new incoming direction
+            float connectPdf_E = 0.0f;
+            float connectingBsdfResult_E = path.m_vert_BSDF_E[eVertIdx]->evaluatePSA(-LtoEDir,
+                                                                                *path.m_outdir_E[eVertIdx-1],
+                                                                                *path.m_vert_normal_E[eVertIdx],
+                                                                                connectPdf_E);
+            //if it's 0
+            if(connectPdf_E == 0.0f || connectingBsdfResult_E == 0.0f){
                 continue;
             }
             //calculate the visibility term for the connecting edge
-            Ray connectRay = Ray(path.m_position_L[sVertIdx], StoTDir, StoT.length(), ray.m_time);
+            Ray connectRay = Ray(*path.m_vert_position_L[lVertIdx], LtoEDir, LtoE.length(), ray.m_time);
             Intersection connectIntersection(connectRay);
             //if it's 0
             if(scene.intersect(connectIntersection)){
                 //skip this path
                 continue;
             }
-            //calculate cosThetaOut and cosThetaPrimeIn for the connecting edge
-            float cosThetaOut = dot(path.m_normal_L[sVertIdx], StoTDir);
-            float cosThetaPrimeIn = dot(path.m_normal_E[tVertIdx], -StoTDir);
-            //calculate the geometric term for the connecting edge
-            float connectGeoTerm = std::fabs(cosThetaOut * cosThetaPrimeIn) / StoT.length2();
 
-            // Create a combined path, X_st
-            //outgoing ray directions
-            //geometric terms
-            size_t xst_idx = 0;
-            for(size_t s = 0; s < S-1; s++, xst_idx++){
-                path.m_xst_outdir[xst_idx] = path.m_outdir_L[s];
-                path.m_xst_GeoTerm[xst_idx] = path.m_geoTerms_L[s];
-            }
-            path.m_xst_outdir[xst_idx] = StoTDir;
-            path.m_xst_GeoTerm[xst_idx] = connectGeoTerm;
-            xst_idx++;
-            for(size_t t = T-2; t >= 0; t--, xst_idx++){
-                path.m_xst_outdir[xst_idx] = path.m_outdir_E[t];
-                path.m_xst_GeoTerm[xst_idx] = path.m_geoTerms_E[t];
-            }
-            //Bsdfs
-            //Normals
-            for(size_t s = 0, xst_idx = 0; s < S; s++, xst_idx++){
-                path.m_xst_Bsdf[xst_idx] = path.m_BSDF_L[s];
-                path.m_xst_normal[xst_idx] = path.m_normal_L[s];
-            }
-            for(size_t t = T-1; t >= 0; t--, xst_idx++){
-                path.m_xst_Bsdf[xst_idx] = path.m_BSDF_E[t];
-                path.m_xst_normal[xst_idx] = path.m_normal_E[t];
-            }
+            // Calculate the probability of this path being sampled, pst;
+            //pst = vert_PA_L[subL-1] * vert_PA_E[subE-1] * connectPdf
+            float pst = path.m_vert_PA_L[subL-1] * path.m_vert_PA_E[subE-1] * connectPdf_L * connectPdf_E;
 
-            // Calculate the MIS weight for this path, Wst (Veach, pg 306)
-            //set p_sum to 1 (we're adding ps^2 to start)
-            float p_sum = 1.0f;
-            //set p_cur to 1
-            float p_cur = 1.0f;
-            //set p_next to 0
-            float p_next = 0.0f;
-            //set p_pre to 0
-            float p_pre = 0.0f;
-            // Get the P_i values greater than P_s
-            //for idx from S+1 to S+T-1:
-            for(size_t idx = S+1; idx <= S+T+1; idx++){
-                float pdf_negTo0 = path.m_xst_Bsdf[idx]->pdfPSA(-path.m_xst_outdir[idx-2], path.m_xst_outdir[idx-1], path.m_xst_normal[idx-1]);
-                float pdf_posTo0 = path.m_xst_Bsdf[idx]->pdfPSA(-path.m_xst_outdir[idx], path.m_xst_outdir[idx-1], path.m_xst_normal[idx]);
-                //p_next = (pdfPSA(x_idx-1 -> x_idx) * GeoTerm(x_idx-1 <-> x_idx)) / (pdfPSA(x_idx+1 -> x_idx) * GeoTerm(x_idx+1 <-> x_idx)) * p_cur
-                //TODO
-                //p_sum += p_next^2
-                p_sum += p_next * p_next;
-                //p_cur = p_next
-                p_cur = p_next;
+            //create a lightpath BSDF value, Fs_L, set to (1,1,1)
+            Color Fs_L = Color(1.0f, 1.0f, 1.0f);
+            //create an eyepath BSDF value, Fs_E, set to (1,1,1)
+            Color Fs_E = Color(1.0f, 1.0f, 1.0f);
+            //for each vertex on the light path (except the connecting vertex and the first vertex)
+            for(size_t idx = 1; idx < subL; idx++){
+                //Fs_L *= vert_Fs_L[vert index]
+                Fs_L *= *path.m_vert_Fs_L[idx];
             }
-            // Get P_k+1
-            //p_sum += ((pdfPSA(x_k-1 -> x_k) * GeoTerm(x_k-1 <-> x_k)) / (P_A(x_k))) ^ 2
-            // Get the P_i values smaller than P_s
-            //set p_cur to 1
-            p_cur = 1.0f;
-            //for idx from S-1 to 0:
-            for(size_t idx = S-1; idx >= 0; idx--){
-                //p_pre = (pdfPSA(x_idx+1 -> x_idx) * GeoTerm(x_idx+1 <-> x_idx)) / (pdfPSA(x_idx-1 -> x_idx) * GeoTerm(x_idx-1 <-> x_idx)) * p_cur
-                //TODO
-                //p_sum += p_pre^2
-                p_sum += p_pre * p_pre;
-                //p_cur = p_pre
-                p_cur = p_pre;
+            //for each vertex on the eye path (except the connecting vertex and the first vertex)
+            for(size_t idx = 1; idx < subE; idx++){
+                //Fs_E *= vert_Fs_E[vert index]
+                Fs_E *= *path.m_vert_Fs_E[idx];
             }
-            // Get P_0
-            //p_sum += ((pdfPSA(x_1 -> x_0) * GeoTerm(x_1 <-> x_0)) / (P_A(x_0))) ^ 2
-            //Wst = 1 / p_sum
-            float Wst = 1.0f / p_sum;
-
-            //calculate Cst (Veach, pg 305)
-            float Cst;
-            //if s == 0
-            if(S == 0){
-                //Cst = Le(z_t-1 -> z_t-2)
-            }
-            //else if t == 0 (which it won't be)
-            else if(T == 0){
-                //Cst = We(y_s-2 -> y_s-1)
-            }
-            //else
-            else{
-                //Cst = BSDF(y_s-2 -> y_s-1 -> z_t-1) * G(y_s-1 <-> z_t-1) * BSDF(y_s-1 -> z_t-1 -> z_t-2)
-            }
-            //add Wst * Cst * Alpha_L_S * Alpha_E_T to the result
-            result += Wst * Cst * path.m_alpha_i_L[S] * path.m_alpha_i_E[T];
+            //get the BSDF value for the lightpath's connecting vertex, Fs_L_connect
+            //Color Fs_L_connect = vertex subL mat color * connectingBsdfResult_L
+            Color Fs_L_connect = *path.m_vert_matColor_L[lVertIdx] * connectingBsdfResult_L;
+            //get the BSDF value for the eyepath's connecting vertex, Fs_E_connect
+            //Color Fs_E_connect = vertex subE mat color * connectingBsdfResult_E
+            Color Fs_E_connect = *path.m_vert_matColor_E[eVertIdx] * connectingBsdfResult_E;
+            //the final value of this subpath
+            //subpath = light color * light power * Fs_L * Fs_E * Fs_L_connect * Fs_E_connect
+            Color subpathResult = pBDLightShape->emitted() * Fs_L * Fs_E * Fs_L_connect * Fs_E_connect;
+            //add the weighted contribution to the result
+            result += (subpathResult / pst) * subpathWeight;
         }
     }
     //return the result
