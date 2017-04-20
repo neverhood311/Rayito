@@ -642,6 +642,9 @@ Color BDpathTrace(const Ray& ray,
 
         //if this bounce is a light
         if(intersection.m_pShape->isLight()){
+            if(numBounces == 0){
+                result += intersection.m_pMaterial->emittance();
+            }
             //let's just pretend this never happened...
             break;
         }
@@ -876,7 +879,7 @@ Color BDpathTrace(const Ray& ray,
                 connectingBsdfResult_L = 1.0f / M_PI;    //TODO: Is this right?
             }
             else{
-                connectingBsdfResult_L = path.m_vert_BSDF_L[lVertIdx]->evaluatePSA(-*path.m_outdir_L[lVertIdx-1],
+                connectingBsdfResult_L = path.m_vert_BSDF_L[lVertIdx]->evaluatePSA(*path.m_outdir_L[lVertIdx-1],
                                                                                 LtoEDir,
                                                                                 *path.m_vert_normal_L[lVertIdx],
                                                                                 connectPdf_L);
@@ -888,7 +891,7 @@ Color BDpathTrace(const Ray& ray,
             }
             //calculate the Pdf for subE to subE-1 with the new incoming direction
             float connectPdf_E = 0.0f;
-            float connectingBsdfResult_E = path.m_vert_BSDF_E[eVertIdx]->evaluatePSA(-LtoEDir,
+            float connectingBsdfResult_E = path.m_vert_BSDF_E[eVertIdx]->evaluatePSA(LtoEDir,
                                                                                 *path.m_outdir_E[eVertIdx-1],
                                                                                 *path.m_vert_normal_E[eVertIdx],
                                                                                 connectPdf_E);
@@ -907,19 +910,20 @@ Color BDpathTrace(const Ray& ray,
 
             // Calculate the probability of this path being sampled, pst;
             //pst = vert_PA_L[subL-1] * vert_PA_E[subE-1] * connectPdf
-            float pst = path.m_vert_PA_L[subL-1] * path.m_vert_PA_E[subE-1] * connectPdf_L * connectPdf_E;
+            float pst = path.m_vert_PA_L[lVertIdx] * path.m_vert_PA_E[eVertIdx-1] * connectPdf_L * connectPdf_E;
+            //pst = path.m_vert_PA_L[lVertIdx] * connectPdf_L * connectPdf_E;
 
             //create a lightpath BSDF value, Fs_L, set to (1,1,1)
             Color Fs_L = Color(1.0f, 1.0f, 1.0f);
             //create an eyepath BSDF value, Fs_E, set to (1,1,1)
             Color Fs_E = Color(1.0f, 1.0f, 1.0f);
             //for each vertex on the light path (except the connecting vertex and the first vertex)
-            for(size_t idx = 1; idx < subL; idx++){
+            for(size_t idx = 1; idx < lVertIdx; idx++){
                 //Fs_L *= vert_Fs_L[vert index]
                 Fs_L *= *path.m_vert_Fs_L[idx];
             }
             //for each vertex on the eye path (except the connecting vertex and the first vertex)
-            for(size_t idx = 1; idx < subE; idx++){
+            for(size_t idx = 1; idx < eVertIdx; idx++){
                 //Fs_E *= vert_Fs_E[vert index]
                 Fs_E *= *path.m_vert_Fs_E[idx];
             }
