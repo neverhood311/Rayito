@@ -19,6 +19,10 @@ namespace Rayito
 // BSDF (bidirectional scattering distribution function)
 //
 
+#define IS_BSDF 0
+#define IS_BRDF 1
+#define IS_BTDF 2
+
 class Bsdf
 {
 public:
@@ -81,6 +85,8 @@ public:
     }
 
     virtual bool isDiracDistribution() const { return false; }
+
+    virtual unsigned int type() const { return IS_BSDF; }
 };
 
 //
@@ -126,6 +132,8 @@ public:
     }
     
     virtual bool isDiracDistribution() const { return false; }
+
+    virtual unsigned int type() const { return IS_BRDF; }
 };
 
 //
@@ -171,6 +179,9 @@ public:
     }
 
     virtual bool isDiracDistribution() const { return false; }
+
+    virtual unsigned int type() const { return IS_BTDF; }
+
 };
 
 

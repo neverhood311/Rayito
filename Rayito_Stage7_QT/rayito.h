@@ -146,9 +146,9 @@ struct PathVertexContainer
     //eyepath specular flags, vert_isDirac_E[max ray depth], set all to false
     std::vector<bool> m_vert_isDirac_E;
     //lightpath PDFs with respect to Projected Solid Angle, vert_PDFPSA_L[max ray depth]
-    std::vector<float> m_PdfPsa_L;
+    //std::vector<float> m_PdfPsa_L;
     //eyepath PDFs with respect to Projected Solid Angle, vert_PDFPSA_E[max ray depth]
-    std::vector<float> m_PdfPsa_E;
+    //std::vector<float> m_PdfPsa_E;
     //lightpath vertex positions, vert_position_L[max ray depth]
     std::vector<Point*> m_vert_position_L;
     //eyepath vertex positions, vert_position_E[max ray depth]
@@ -158,29 +158,45 @@ struct PathVertexContainer
     //eyepath vertex normals, vert_normal_E[max ray depth]
     std::vector<Vector*> m_vert_normal_E;
     //lightpath vertex outgoing ray direction, vert_outdir_L[max ray depth]
-    std::vector<Vector*> m_outdir_L;
+    //std::vector<Vector*> m_outdir_L;
     //eyepath vertex outgoing ray direction, vert_outdir_E[max ray depth]
-    std::vector<Vector*> m_outdir_E;
+    //std::vector<Vector*> m_outdir_E;
     //lightpath vertex BSDFs, vert_BSDF_L[max ray depth]
     std::vector<Bsdf*> m_vert_BSDF_L;
     //eyepath vertex BSDFs, vert_BSDF_E[max ray depth]
     std::vector<Bsdf*> m_vert_BSDF_E;
+    //lightpath vertex shape pointer, vert_pShape_L[max ray depth]
+    std::vector<Shape*> m_vert_pShape_L;
+    //eyepath vertex shape pointer, vert_pShape_E[max ray depth]
+    std::vector<Shape*> m_vert_pShape_E;
+    //lightpath vertex material pointer, vert_pMaterial_L[max ray depth]
+    std::vector<Material*> m_vert_pMaterial_L;
+    //eyepath vertex material pointer, vert_pMaterial_E[max ray depth]
+    std::vector<Material*> m_vert_pMaterial_E;
     //lightpath vertex material color, vert_matColor_L[max ray depth]
     std::vector<Color*> m_vert_matColor_L;
     //eyepath vertex material color, vert_matColor_L[max ray depth]
     std::vector<Color*> m_vert_matColor_E;
+    //lightpath vertex color modulator, vert_colorModifier_L[max ray depth]
+    std::vector<Color*> m_vert_colorModifier_L;
+    //eyepath vertex color modulator, vert_colorModifier_E[max ray depth]
+    std::vector<Color*> m_vert_colorModifier_E;
     //lightpath vertex BSDF evaluation, vert_Fs_L[max ray depth]
-    std::vector<Color*> m_vert_Fs_L;
+    //std::vector<Color*> m_vert_Fs_L;
     //eyepath vertex BSDF evaluation, vert_Fs_E[max ray depth]
-    std::vector<Color*> m_vert_Fs_E;
+    //std::vector<Color*> m_vert_Fs_E;
     //vertex Alpha L sub i values, vert_Alpha_L_i[max ray depth]
     //std::vector<Color> m_alpha_i_L;
     //vertex Alpha E sub i values, vert_Alpha_E_i[max ray depth]
     //std::vector<Color> m_alpha_i_E;
     //lightpath vertex probability with respect to surface area, vert_PA_L[max ray depth]
-    std::vector<float> m_vert_PA_L;
+    //std::vector<float> m_vert_PA_L;
     //eyepath vertex probability with respect to surface area, vert_PA_E[max ray depth]
-    std::vector<float> m_vert_PA_E;
+    //std::vector<float> m_vert_PA_E;
+    //lightpath vertex BSDF weight, vert_BSDF_weight_L[max ray depth]
+    std::vector<float> m_vert_BSDF_weight_L;
+    //eyepath vertex BSDF weight, vert_BSDF_weight_E[max ray depth]
+    std::vector<float> m_vert_BSDF_weight_E;
 
     //combined path outgoing ray directions, xst_outdir[max ray depth * 2]
     //std::vector<Vector> m_xst_outdir;

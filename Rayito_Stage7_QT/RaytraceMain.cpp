@@ -135,8 +135,8 @@ protected:
             path.m_vert_isDirac_L.push_back(false);
             path.m_vert_isDirac_E.push_back(false);
             //add zeros to PdfPsa_L and PdfPsa_E
-            path.m_PdfPsa_L.push_back(0.0f);
-            path.m_PdfPsa_E.push_back(0.0f);
+            //path.m_PdfPsa_L.push_back(0.0f);
+            //path.m_PdfPsa_E.push_back(0.0f);
             //add (0,0,0)s to position_L and position_E
             path.m_vert_position_L.push_back(new Vector(0.0f));
             path.m_vert_position_E.push_back(new Vector(0.0f));
@@ -144,20 +144,28 @@ protected:
             path.m_vert_normal_L.push_back(new Vector(0.0f));
             path.m_vert_normal_E.push_back(new Vector(0.0f));
             //add (0,0,0)s to outdir_L and outdir_E
-            path.m_outdir_L.push_back(new Vector(0.0f));
-            path.m_outdir_E.push_back(new Vector(0.0f));
+            //path.m_outdir_L.push_back(new Vector(0.0f));
+            //path.m_outdir_E.push_back(new Vector(0.0f));
             //add NULLs to BSDF_L and BSDF_E
             path.m_vert_BSDF_L.push_back(NULL);
             path.m_vert_BSDF_E.push_back(NULL);
+            path.m_vert_pShape_L.push_back(NULL);
+            path.m_vert_pShape_E.push_back(NULL);
+            path.m_vert_pMaterial_L.push_back(NULL);
+            path.m_vert_pMaterial_E.push_back(NULL);
             //add (1,1,1)s to matColor_L and matColor_E
             path.m_vert_matColor_L.push_back(new Color(1.0f, 1.0f, 1.0f));
             path.m_vert_matColor_E.push_back(new Color(1.0f, 1.0f, 1.0f));
+            path.m_vert_colorModifier_L.push_back(new Color(1.0f, 1.0f, 1.0f));
+            path.m_vert_colorModifier_E.push_back(new Color(1.0f, 1.0f, 1.0f));
             //add (1,1,1)s to vert_Fs_L and vert_Fs_E
-            path.m_vert_Fs_L.push_back(new Color(1.0f, 1.0f, 1.0f));
-            path.m_vert_Fs_E.push_back(new Color(1.0f, 1.0f, 1.0f));
+            //path.m_vert_Fs_L.push_back(new Color(1.0f, 1.0f, 1.0f));
+            //path.m_vert_Fs_E.push_back(new Color(1.0f, 1.0f, 1.0f));
             //add zeros to vert_PA_L and vert_PA_E
-            path.m_vert_PA_L.push_back(0.0f);
-            path.m_vert_PA_E.push_back(0.0f);
+            //path.m_vert_PA_L.push_back(0.0f);
+            //path.m_vert_PA_E.push_back(0.0f);
+            path.m_vert_BSDF_weight_L.push_back(0.0f);
+            path.m_vert_BSDF_weight_E.push_back(0.0f);
         }
 
         // For each pixel row...
@@ -260,16 +268,18 @@ protected:
 
         // Deallocate path Vectors and Colors
         for(size_t i = 0; i < m_maxRayDepth+1; i++){
-            delete path.m_outdir_L[i];
-            delete path.m_outdir_E[i];
-            delete path.m_vert_Fs_L[i];
-            delete path.m_vert_Fs_E[i];
+            //delete path.m_outdir_L[i];
+            //delete path.m_outdir_E[i];
+            //delete path.m_vert_Fs_L[i];
+            //delete path.m_vert_Fs_E[i];
             delete path.m_vert_position_L[i];
             delete path.m_vert_position_E[i];
             delete path.m_vert_normal_L[i];
             delete path.m_vert_normal_E[i];
             delete path.m_vert_matColor_L[i];
             delete path.m_vert_matColor_E[i];
+            delete path.m_vert_colorModifier_L[i];
+            delete path.m_vert_colorModifier_E[i];
         }
     }
     
@@ -389,7 +399,7 @@ Color pathTrace(const Ray& ray,
         // Add in emission when directly visible or via perfect specular bounces
         // (Note that we stop including it through any non-Dirac bounce to
         // prevent caustic noise.)
-        if (true || numBounces == 0 || numBounces == numDiracBounces)   //actually, if we want specular caustics, we need to do this for every bounce
+        if (!intersection.m_pShape->isLight() || numBounces == 0 || lastBounceDiracDistribution)
         {
             result += throughput * intersection.m_pMaterial->emittance();
         }
@@ -570,8 +580,9 @@ Color pathTrace(const Ray& ray,
     return result;
 }
 
+/*
 //bidirectional pathTrace function
-Color BDpathTrace(const Ray& ray,
+Color BDpathTrace_z(const Ray& ray,
                   ShapeSet& scene,
                   std::vector<Shape*>& lights,
                   Rng& rng,
@@ -941,6 +952,363 @@ Color BDpathTrace(const Ray& ray,
         }
     }
     //return the result
+    return result;
+}
+*/
+//somewhat naive bidirectional pathTrace function
+Color BDpathTrace(const Ray& ray,
+                  ShapeSet& scene,
+                  std::vector<Shape*>& lights,
+                  Rng& rng,
+                  SamplerContainer& samplers,
+                  PathVertexContainer& path,
+                  unsigned int pixelSampleIndex){
+    // Accumulate total incoming radiance in 'result'
+    Color result = Color(0.0f, 0.0f, 0.0f);
+
+    //BUILD A PATH STARTING FROM THE CAMERA
+
+    // Start with the initial ray from the camera
+    Ray currentRay = ray;
+
+    //set vert_position_E[0] to the camera's position
+    *path.m_vert_position_E[0] = currentRay.m_origin;
+
+    //We don't really need to worry about vert_normal[0], vert_isDirac[0], vert_BSDF[0], vert_matColor[0], or vert_BSDF_weight[0]
+
+    // While we have bounces left we can still take...
+    size_t numBounces = 0;
+    size_t nE = 1;
+    while(numBounces < samplers.m_maxRayDepth){
+        // Trace the ray to see if we hit anything
+        Intersection intersection(currentRay);
+        //if not
+        if(!scene.intersect(intersection)){
+            //return background
+            break;
+        }
+        // Evaluate the material and intersection information at this bounce
+        //store the position
+        Point position = *path.m_vert_position_E[nE] = intersection.position();
+        //store the normal
+        Vector normal = *path.m_vert_normal_E[nE] = intersection.m_normal;
+        //store the outgoing direction
+        Vector outgoing = -currentRay.m_direction;
+        //store the Bsdf
+        Bsdf* pBsdf = NULL;
+        float bsdfWeight = 1.0f;
+        //store the material color and color modifier
+        *path.m_vert_matColor_E[nE] = intersection.m_pMaterial->evaluate(position,
+                                                                                          normal,
+                                                                                          outgoing,
+                                                                                          pBsdf,
+                                                                                          bsdfWeight);
+        path.m_vert_BSDF_E[nE] = pBsdf;
+        *path.m_vert_colorModifier_E[nE] = intersection.m_colorModifier;
+        path.m_vert_pShape_E[nE] = intersection.m_pShape;
+        path.m_vert_pMaterial_E[nE] = intersection.m_pMaterial;
+        //store the bsdf weight
+        path.m_vert_BSDF_weight_E[nE] = bsdfWeight;
+        // No BSDF? We can't evaluate lighting, so bail
+        if(pBsdf == NULL){
+            break;
+        }
+        // Was this a perfect specular bounce? (store it)
+        path.m_vert_isDirac_E[nE] = pBsdf->isDiracDistribution();
+        // Evaluate direct lighting at this bounce  //TODO: MAYBE
+        // Sample the BSDF to find the direction the next leg of the path goes in
+        float bsdfSampleU, bsdfSampleV;
+        samplers.m_bounceSamplers[numBounces]->sample2D(pixelSampleIndex, bsdfSampleU, bsdfSampleV);
+        Vector incoming;
+        float incomingBsdfPdf = 0.0f;
+        pBsdf->sampleSA(incoming,
+                           outgoing,
+                           normal,
+                           bsdfSampleU,
+                           bsdfSampleV,
+                           incomingBsdfPdf);
+        if(incomingBsdfPdf > 0.0f){
+            //setup the currentRay for the next bounce
+            currentRay.m_origin = position;
+            currentRay.m_direction = -incoming;
+            currentRay.m_tMax = kRayTMax;
+        }
+        else{
+            break;  //BSDF is zero, stop bouncing
+        }
+
+        numBounces++;
+        nE++;
+    }
+
+    //if we hit the background first
+    if(numBounces == 0){
+        //just return black
+        return result;
+    }
+
+    //BUILD A PATH STARTING FROM THE LIGHT
+    // Keep track of the lightpath throughput? (it'd only be useful for russian roulette)
+    //Pick a random light and get a sample from it (position and direction)
+    unsigned int finalBDLightSampleIndex = pixelSampleIndex;
+    float bd_liu = samplers.m_BDlightSelectionSampler->sample1D(finalBDLightSampleIndex);
+    size_t bd_lightIndex = (size_t)(bd_liu * lights.size());
+    if(bd_lightIndex >= lights.size())
+        bd_lightIndex = lights.size() - 1;
+    Light *pBDLightShape = (Light*)lights[bd_lightIndex];
+    //ask the light for a random position
+    float bd_leu = samplers.m_BDlightElementSampler->sample1D(finalBDLightSampleIndex);
+    float bd_lsu, bd_lsv;
+    samplers.m_BDlightSampler->sample2D(finalBDLightSampleIndex, bd_lsu, bd_lsv);
+    Point bd_lightPoint;
+    Vector bd_lightNormal;
+    float dummyLightPdf = 0.0f; //dummy value?
+    Point dummyPosition = Point();
+    Vector dummyNormal = Vector(1.0f, 1.0f, 1.0f);
+    pBDLightShape->sampleSurface(dummyPosition,
+                                 dummyNormal,
+                                 ray.m_time,
+                                 bd_lsu, bd_lsv, bd_leu,
+                                 bd_lightPoint,
+                                 bd_lightNormal,
+                                 dummyLightPdf);
+    //Pick a random direction in the hemisphere (we're assuming the light emits diffusely)
+    float bd_ldu, bd_ldv;
+    samplers.m_BDlightDirectionSampler->sample2D(finalBDLightSampleIndex, bd_ldu, bd_ldv);
+    Vector bd_localOutgoing = uniformToCosineHemisphere(bd_ldu, bd_ldv);
+    Vector x, y, z;
+    makeCoordinateSpace(bd_lightNormal, x, y, z);
+    Vector bd_outgoing = transformFromLocalCoordinateSpace(bd_localOutgoing, x, y, z);
+    if(dot(bd_outgoing, bd_lightNormal) < 0.0f)
+        bd_outgoing *= -1.0f;
+
+    *path.m_vert_position_L[0] = bd_lightPoint;
+    path.m_vert_pShape_L[0] = pBDLightShape;
+    //Bsdf* pBsdf = pBDLightShape->m
+
+    //Create a ray using the light's position and direction
+    currentRay.m_origin = bd_lightPoint;
+    currentRay.m_direction = bd_outgoing;
+    currentRay.m_tMax = kRayTMax;
+
+    numBounces = 0;
+    size_t nL = 1;
+    //While we have light bounces left
+    while(numBounces < samplers.m_maxRayDepth){
+        //Trace the ray to see if we hit anything
+        Intersection intersection(currentRay);
+        //if not
+        if(!scene.intersect(intersection)){
+            //end the lightpath here
+            break;
+        }
+        //Evaluate the material and intersection information at this bounce
+        //store the position
+        Point position = *path.m_vert_position_L[nL] = intersection.position();
+        //store the normal
+        Vector normal = *path.m_vert_normal_L[nL] = intersection.m_normal;
+        //store the outgoing direction
+        Vector outgoing = -currentRay.m_direction;
+        //store the Bsdf
+        Bsdf* pBsdf = NULL;
+        float bsdfWeight = 1.0f;
+        //store the material color and color modulator
+        *path.m_vert_matColor_L[nL] = intersection.m_pMaterial->evaluate(position,
+                                                                                          normal,
+                                                                                          outgoing,
+                                                                                          pBsdf,
+                                                                                          bsdfWeight);
+        path.m_vert_BSDF_L[nL] = pBsdf;
+        *path.m_vert_colorModifier_L[nL] = intersection.m_colorModifier;
+        path.m_vert_pShape_L[nL] = intersection.m_pShape;
+        path.m_vert_pMaterial_L[nL] = intersection.m_pMaterial;
+        //store the Bsdf weight
+        path.m_vert_BSDF_weight_L[nL] = bsdfWeight;
+        //No BSDF? We can't evaluate lighting, so bail
+        if(pBsdf == NULL){
+            break;
+        }
+        //Was this a perfect specular bounce? (store it)
+        path.m_vert_isDirac_L[nL] = pBsdf->isDiracDistribution();
+        //Sample the BSDF to find the direction of the next leg of the path
+        float bsdfSampleU, bsdfSampleV;
+        samplers.m_lightBounceSamplers[numBounces]->sample2D(pixelSampleIndex, bsdfSampleU, bsdfSampleV);
+        Vector incoming;
+        float incomingBsdfPdf = 0.0f;
+        pBsdf->sampleSA(incoming,
+                           outgoing,
+                           normal,
+                           bsdfSampleU,
+                           bsdfSampleV,
+                           incomingBsdfPdf);
+        if(incomingBsdfPdf > 0.0f){
+            //setup the currentRay for the next bounce
+            currentRay.m_origin = position;
+            currentRay.m_direction = -incoming;
+            currentRay.m_tMax = kRayTMax;
+        }
+        else{
+            break;  //BSDF is zero, stop bouncing
+        }
+
+        numBounces++;
+        nL++;
+    }
+
+    //COMBINE THE PATHS AND ACCUMULATE LIGHT
+    //Calculate a weighting factor for each subpath
+    float subpathWeight = 1.0f / (float)(nL * (nE-1));
+    //For each possible lightpath length
+    for(size_t subL = 1; subL <= nL; subL++){
+        //For each possible eyepath length (minimum of 2 vertices)
+        for(size_t subE = 2; subE <= nE; subE++){
+            size_t lVertIdx = subL-1;
+            size_t eVertIdx = subE-1;
+            size_t numVerts = subL + subE;
+            //size_t numEdges = numVerts - 1;
+            //If either connecting vertex is a dirac distribution
+            if(path.m_vert_isDirac_E[eVertIdx] || path.m_vert_isDirac_L[lVertIdx]){
+                //skip this subpath
+                continue;
+            }
+            //Get the vector from the end of the lightpath to the end of the eyepath
+            Vector LtoE = *path.m_vert_position_E[eVertIdx] - *path.m_vert_position_L[lVertIdx];
+            Vector LtoEDir = LtoE.normalized();
+            //If the connecting vertices aren't mutually visible
+            //(BRDFs where dot(normal, outgoing) < 0)?
+            if(path.m_vert_BSDF_E[eVertIdx]->type() == IS_BRDF){
+                if(dot(*path.m_vert_normal_E[eVertIdx], LtoEDir) > 0.0f){
+                    continue;
+                }
+            }
+            if(lVertIdx > 0 && path.m_vert_BSDF_L[lVertIdx]->type() == IS_BRDF){
+                if(dot(*path.m_vert_normal_L[lVertIdx], LtoEDir) < 0.0f){
+                    continue;
+                }
+            }
+            //(BTDFs where dot(normal, outgoing) > 0)?  //TODO?
+            //I think we have to make sure that outgoing and incoming are on different hemispheres for each point
+            //TODO
+
+            Ray connectRay = Ray(*path.m_vert_position_L[lVertIdx], LtoEDir, LtoE.length(), ray.m_time);
+            Intersection connectIntersection(connectRay);
+            //(There's something in between the surfaces)
+            if(scene.intersect(connectIntersection)){
+                //skip this subpath
+                continue;
+            }
+            // As we get through more and more bounces, we track how much the light is
+            // diminished through each bounce
+            //Initialize the throughput to ones
+            Color throughput = Color(1.0f, 1.0f, 1.0f);
+            //Initialize the subpathResult to zeros
+            Color subpathResult = Color(0.0f, 0.0f, 0.0f);
+            //Initialize numDiracBounces to zero
+            size_t numDiracBounces = 0;
+            numBounces = 0;
+            bool lastBounceDiracDistribution = false;
+            //setup the lastPoint for calculating outgoing direction
+            Point prevPosition = *path.m_vert_position_E[0];
+            //For each bounce in this subpath
+            for(size_t v_idx = 1; v_idx < numVerts; v_idx++){
+                bool vertInEyepath = v_idx <= eVertIdx;
+                size_t local_v_idx = vertInEyepath? v_idx : lVertIdx - (v_idx - eVertIdx - 1);
+                //get the next point in the path (position, normal, outgoing, BSDF, matColor, bsdfWeight, isDirac)
+                Point position;
+                Vector normal;
+                Bsdf* pBsdf;
+                Shape* pShape;
+                Color matColor;
+                Color colorModifier;
+                Material* pMaterial;
+                float bsdfWeight;
+                bool isDirac;
+                if(vertInEyepath){
+                    position =          *path.m_vert_position_E[local_v_idx];
+                    normal =            *path.m_vert_normal_E[local_v_idx];
+                    pBsdf =             path.m_vert_BSDF_E[local_v_idx];
+                    pShape =            path.m_vert_pShape_E[local_v_idx];
+                    matColor =          *path.m_vert_matColor_E[local_v_idx];
+                    colorModifier =    *path.m_vert_colorModifier_E[local_v_idx];
+                    pMaterial =         path.m_vert_pMaterial_E[local_v_idx];
+                    bsdfWeight =        path.m_vert_BSDF_weight_E[local_v_idx];
+                    isDirac =           path.m_vert_isDirac_E[local_v_idx];
+                }
+                else{
+                    position =          *path.m_vert_position_L[local_v_idx];
+                    normal =            *path.m_vert_normal_L[local_v_idx];
+                    pBsdf =             path.m_vert_BSDF_L[local_v_idx];
+                    pShape =            path.m_vert_pShape_L[local_v_idx];
+                    matColor =          *path.m_vert_matColor_L[local_v_idx];
+                    colorModifier =    *path.m_vert_colorModifier_L[local_v_idx];
+                    pMaterial =         path.m_vert_pMaterial_L[local_v_idx];
+                    bsdfWeight =        path.m_vert_BSDF_weight_L[local_v_idx];
+                    isDirac =           path.m_vert_isDirac_L[local_v_idx];
+                }
+                // No BSDF? We can't evaluate lighting, so bail
+                if(pBsdf == NULL){
+                    break;
+                }
+                // Get the next position
+                Point nextPosition;
+                bool nextVertInEyepath = v_idx + 1 <= eVertIdx;
+                size_t local_next_v_idx = nextVertInEyepath? v_idx + 1 : lVertIdx - (v_idx - eVertIdx);
+                if(nextVertInEyepath){
+                    nextPosition = *path.m_vert_position_E[local_next_v_idx];
+                }
+                else{
+                    nextPosition = *path.m_vert_position_L[local_next_v_idx];
+                }
+                // Get the outgoing and incoming directions
+                Vector outgoing = (prevPosition - position).normalized();
+                Vector incoming = (position - nextPosition).normalized();    //pointing toward the surface, not away from it
+                // Add in emission when directly visible from the camera or if the
+                // last bounce was pure specular, as this is the only way to account
+                // for the light. Also if the encountered surface is *not* a light, we
+                // should always add its emission.
+                if(!pShape->isLight() || numBounces == 0 || lastBounceDiracDistribution){
+                    subpathResult += throughput * pMaterial->emittance();
+                }
+                // Was this a perfect specular bounce?
+                lastBounceDiracDistribution = isDirac;
+                if(lastBounceDiracDistribution){
+                    numDiracBounces++;
+                }
+
+                //Evaluate direct lighting???   //TODO: if I have time
+
+                //Evaluate material for actual outgoing and incoming directions
+                //Get the IncomingBsdfPdf and IncomingBsdfResult for the next leg of the path
+                float incomingBsdfPdf = 0.0f;
+                float incomingBsdfResult = pBsdf->evaluateSA(incoming,
+                                                             outgoing,
+                                                             normal,
+                                                             incomingBsdfPdf);
+
+                //if this is the connecting edge
+                    //Do we need to multiply in the geometric term?
+                    //TODO
+
+                //if incomingBsdfPdf is greater than 0
+                if(incomingBsdfPdf > 0.0f){
+                    // Reduce lighting effect for the next bounce based on this bounce's BSDF
+                    throughput *= colorModifier * matColor * incomingBsdfResult *
+                            (std::fabs(dot(-incoming, normal)) /
+                             (incomingBsdfPdf * bsdfWeight));
+                }
+                //else
+                else{
+                    //break; we're done here
+                    break;
+                }
+                numBounces++;
+                prevPosition = position;
+            }
+            result += subpathResult * subpathWeight;
+        }
+    }
+
+    //This represents an estimate of the total light coming in along the path
     return result;
 }
 
