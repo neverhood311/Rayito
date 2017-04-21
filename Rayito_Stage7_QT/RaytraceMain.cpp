@@ -168,6 +168,10 @@ protected:
             //path.m_vert_PA_E.push_back(0.0f);
             path.m_vert_BSDF_weight_L.push_back(0.0f);
             path.m_vert_BSDF_weight_E.push_back(0.0f);
+            path.m_PdfSa_L.push_back(0.0f);
+            path.m_PdfSa_E.push_back(0.0f);
+            path.m_vert_BSDF_result_L.push_back(1.0f);
+            path.m_vert_BSDF_result_E.push_back(1.0f);
         }
 
         // For each pixel row...
@@ -176,6 +180,27 @@ protected:
             // For each pixel across the row...
             for (size_t x = m_xstart; x < m_xend; ++x)
             {
+                if(x == 224 && y == 348){
+                    //perfect reflection towards background
+                    int one = 0;
+                    one++;
+                }
+                if(x == 229 && y == 329){
+                    //perfect reflection towards light source
+                    int one = 0;
+                    one++;
+                }
+                if(x == 220 && y == 365){
+                    //perfect reflection towards ground plane
+                    int one = 0;
+                    one++;
+                }
+                //310 20
+                if(x == 310 && y == 20){
+                    //hit the light source first
+                    int one = 0;
+                    one++;
+                }
                 // Accumulate pixel color
                 Color pixelColor(0.0f, 0.0f, 0.0f);
                 // For each sample in the pixel...
@@ -402,9 +427,10 @@ Color pathTrace(const Ray& ray,
             break;
         }
         
-        // Add in emission when directly visible or via perfect specular bounces
-        // (Note that we stop including it through any non-Dirac bounce to
-        // prevent caustic noise.)
+        // Add in emission when directly visible from the camera or if the
+        // last bounce was pure specular, as this is the only way to account
+        // for the light. Also if the encountered surface is *not* a light, we
+        // should always add its emission.
         if (!intersection.m_pShape->isLight() || numBounces == 0 || lastBounceDiracDistribution)
         {
             result += throughput * intersection.m_pMaterial->emittance();
@@ -972,6 +998,10 @@ Color BDpathTrace(const Ray& ray,
     // Accumulate total incoming radiance in 'result'
     Color result = Color(0.0f, 0.0f, 0.0f);
 
+    // As we get through more and more bounces, we track how much the light is
+    // diminished through each bounce
+    Color throughput = Color(1.0f, 1.0f, 1.0f);
+
     //BUILD A PATH STARTING FROM THE CAMERA
 
     // Start with the initial ray from the camera
@@ -985,6 +1015,7 @@ Color BDpathTrace(const Ray& ray,
     // While we have bounces left we can still take...
     size_t numBounces = 0;
     size_t nE = 1;
+    bool lastBounceDiracDistribution = false;
     while(numBounces < samplers.m_maxRayDepth){
         // Trace the ray to see if we hit anything
         Intersection intersection(currentRay);
@@ -992,6 +1023,12 @@ Color BDpathTrace(const Ray& ray,
         if(!scene.intersect(intersection)){
             //return background
             break;
+        }
+        // Add in emission where directly visible from the camera or if the
+        // last bounce was pure specular, as this is the only way to account
+        // for the light. (This light won't be picked up by the path combiner).
+        if(numBounces == 0 || lastBounceDiracDistribution){
+            result += throughput * intersection.m_pMaterial->emittance();
         }
         // Evaluate the material and intersection information at this bounce
         //store the position
@@ -1004,11 +1041,11 @@ Color BDpathTrace(const Ray& ray,
         Bsdf* pBsdf = NULL;
         float bsdfWeight = 1.0f;
         //store the material color and color modifier
-        *path.m_vert_matColor_E[nE] = intersection.m_pMaterial->evaluate(position,
-                                                                                          normal,
-                                                                                          outgoing,
-                                                                                          pBsdf,
-                                                                                          bsdfWeight);
+        Color matColor = *path.m_vert_matColor_E[nE] = intersection.m_pMaterial->evaluate(position,
+                                                                          normal,
+                                                                          outgoing,
+                                                                          pBsdf,
+                                                                          bsdfWeight);
         path.m_vert_BSDF_E[nE] = pBsdf;
         *path.m_vert_colorModifier_E[nE] = intersection.m_colorModifier;
         path.m_vert_pShape_E[nE] = intersection.m_pShape;
@@ -1020,24 +1057,31 @@ Color BDpathTrace(const Ray& ray,
             break;
         }
         // Was this a perfect specular bounce? (store it)
-        path.m_vert_isDirac_E[nE] = pBsdf->isDiracDistribution();
-        // Evaluate direct lighting at this bounce  //TODO: MAYBE
+        lastBounceDiracDistribution = path.m_vert_isDirac_E[nE] = pBsdf->isDiracDistribution();
         // Sample the BSDF to find the direction the next leg of the path goes in
         float bsdfSampleU, bsdfSampleV;
         samplers.m_bounceSamplers[numBounces]->sample2D(pixelSampleIndex, bsdfSampleU, bsdfSampleV);
         Vector incoming;
         float incomingBsdfPdf = 0.0f;
-        pBsdf->sampleSA(incoming,
-                           outgoing,
-                           normal,
-                           bsdfSampleU,
-                           bsdfSampleV,
-                           incomingBsdfPdf);
+        float incomingBsdfResult = pBsdf->sampleSA(incoming,
+                                                   outgoing,
+                                                   normal,
+                                                   bsdfSampleU,
+                                                   bsdfSampleV,
+                                                   incomingBsdfPdf);
+        //store the Pdf value for this bounce (VERY important for Perfect Reflection BRDFs)
+        path.m_PdfSa_E[nE] = incomingBsdfPdf;
+        //store the BsdfResult so we don't have to recalculate it later
+        path.m_vert_BSDF_result_E[nE] = incomingBsdfResult;
         if(incomingBsdfPdf > 0.0f){
             //setup the currentRay for the next bounce
             currentRay.m_origin = position;
             currentRay.m_direction = -incoming;
             currentRay.m_tMax = kRayTMax;
+            // Reduce lighting effect for the next bounce based on this bounce's BSDF
+            throughput *= intersection.m_colorModifier * matColor * incomingBsdfResult *
+                    (std::fabs(dot(-incoming, normal)) /
+                     (incomingBsdfPdf * bsdfWeight));
         }
         else{
             break;  //BSDF is zero, stop bouncing
@@ -1120,10 +1164,10 @@ Color BDpathTrace(const Ray& ray,
         float bsdfWeight = 1.0f;
         //store the material color and color modulator
         *path.m_vert_matColor_L[nL] = intersection.m_pMaterial->evaluate(position,
-                                                                                          normal,
-                                                                                          outgoing,
-                                                                                          pBsdf,
-                                                                                          bsdfWeight);
+                                                                          normal,
+                                                                          outgoing,
+                                                                          pBsdf,
+                                                                          bsdfWeight);
         path.m_vert_BSDF_L[nL] = pBsdf;
         *path.m_vert_colorModifier_L[nL] = intersection.m_colorModifier;
         path.m_vert_pShape_L[nL] = intersection.m_pShape;
@@ -1141,12 +1185,16 @@ Color BDpathTrace(const Ray& ray,
         samplers.m_lightBounceSamplers[numBounces]->sample2D(pixelSampleIndex, bsdfSampleU, bsdfSampleV);
         Vector incoming;
         float incomingBsdfPdf = 0.0f;
-        pBsdf->sampleSA(incoming,
-                           outgoing,
-                           normal,
-                           bsdfSampleU,
-                           bsdfSampleV,
-                           incomingBsdfPdf);
+        float incomingBsdfResult = pBsdf->sampleSA(incoming,
+                                                   outgoing,
+                                                   normal,
+                                                   bsdfSampleU,
+                                                   bsdfSampleV,
+                                                   incomingBsdfPdf);
+        //store the Pdf value for this bounce (VERY important for Perfect Reflection BRDFs)
+        path.m_PdfSa_L[nL] = incomingBsdfPdf;
+        //store the BsdfResult so we don't have to recalculate it later
+        path.m_vert_BSDF_result_L[nL] = incomingBsdfResult;
         if(incomingBsdfPdf > 0.0f){
             //setup the currentRay for the next bounce
             currentRay.m_origin = position;
@@ -1206,18 +1254,22 @@ Color BDpathTrace(const Ray& ray,
             // As we get through more and more bounces, we track how much the light is
             // diminished through each bounce
             //Initialize the throughput to ones
-            Color throughput = Color(1.0f, 1.0f, 1.0f);
+            throughput = Color(1.0f, 1.0f, 1.0f);
             //Initialize the subpathResult to zeros
             Color subpathResult = Color(0.0f, 0.0f, 0.0f);
             //Initialize numDiracBounces to zero
             size_t numDiracBounces = 0;
             numBounces = 0;
-            bool lastBounceDiracDistribution = false;
+            lastBounceDiracDistribution = false;
             //setup the lastPoint for calculating outgoing direction
             Point prevPosition = *path.m_vert_position_E[0];
             //For each bounce in this subpath
             for(size_t v_idx = 1; v_idx < numVerts; v_idx++){
                 bool vertInEyepath = v_idx <= eVertIdx;
+                //if this vertex is one of the connecting vertices, we need to know
+                bool isEyeConnectingVert = v_idx == eVertIdx;
+                bool isLightConnectingVert = v_idx == eVertIdx + 1;
+                bool vertIsConnectingVert = isEyeConnectingVert || isLightConnectingVert;
                 size_t local_v_idx = vertInEyepath? v_idx : lVertIdx - (v_idx - eVertIdx - 1);
                 //get the next point in the path (position, normal, outgoing, BSDF, matColor, bsdfWeight, isDirac)
                 Point position;
@@ -1229,16 +1281,20 @@ Color BDpathTrace(const Ray& ray,
                 Material* pMaterial;
                 float bsdfWeight;
                 bool isDirac;
+                float incomingBsdfPdf;
+                float incomingBsdfResult;
                 if(vertInEyepath){
                     position =          *path.m_vert_position_E[local_v_idx];
                     normal =            *path.m_vert_normal_E[local_v_idx];
                     pBsdf =             path.m_vert_BSDF_E[local_v_idx];
                     pShape =            path.m_vert_pShape_E[local_v_idx];
                     matColor =          *path.m_vert_matColor_E[local_v_idx];
-                    colorModifier =    *path.m_vert_colorModifier_E[local_v_idx];
+                    colorModifier =     *path.m_vert_colorModifier_E[local_v_idx];
                     pMaterial =         path.m_vert_pMaterial_E[local_v_idx];
                     bsdfWeight =        path.m_vert_BSDF_weight_E[local_v_idx];
                     isDirac =           path.m_vert_isDirac_E[local_v_idx];
+                    incomingBsdfPdf =   path.m_PdfSa_E[local_v_idx];
+                    incomingBsdfResult =path.m_vert_BSDF_result_E[local_v_idx];
                 }
                 else{
                     position =          *path.m_vert_position_L[local_v_idx];
@@ -1246,28 +1302,20 @@ Color BDpathTrace(const Ray& ray,
                     pBsdf =             path.m_vert_BSDF_L[local_v_idx];
                     pShape =            path.m_vert_pShape_L[local_v_idx];
                     matColor =          *path.m_vert_matColor_L[local_v_idx];
-                    colorModifier =    *path.m_vert_colorModifier_L[local_v_idx];
+                    colorModifier =     *path.m_vert_colorModifier_L[local_v_idx];
                     pMaterial =         path.m_vert_pMaterial_L[local_v_idx];
                     bsdfWeight =        path.m_vert_BSDF_weight_L[local_v_idx];
                     isDirac =           path.m_vert_isDirac_L[local_v_idx];
+                    incomingBsdfPdf =   path.m_PdfSa_L[local_v_idx];
+                    incomingBsdfResult =path.m_vert_BSDF_result_L[local_v_idx];
                 }
+                //Get the outgoing direction
+                Vector outgoing = (prevPosition - position).normalized();
                 // No BSDF? We can't evaluate lighting, so bail
                 if(pBsdf == NULL){
                     break;
                 }
-                // Get the next position
-                Point nextPosition;
-                bool nextVertInEyepath = v_idx + 1 <= eVertIdx;
-                size_t local_next_v_idx = nextVertInEyepath? v_idx + 1 : lVertIdx - (v_idx - eVertIdx);
-                if(nextVertInEyepath){
-                    nextPosition = *path.m_vert_position_E[local_next_v_idx];
-                }
-                else{
-                    nextPosition = *path.m_vert_position_L[local_next_v_idx];
-                }
-                // Get the outgoing and incoming directions
-                Vector outgoing = (prevPosition - position).normalized();
-                Vector incoming = (position - nextPosition).normalized();    //pointing toward the surface, not away from it
+
                 // Add in emission when directly visible from the camera or if the
                 // last bounce was pure specular, as this is the only way to account
                 // for the light. Also if the encountered surface is *not* a light, we
@@ -1398,22 +1446,45 @@ Color BDpathTrace(const Ray& ray,
                     subpathResult += throughput * lightResult;
                 }
 
-                //Evaluate material for actual outgoing and incoming directions
-                //Get the IncomingBsdfPdf and IncomingBsdfResult for the next leg of the path
-                float incomingBsdfPdf = 0.0f;
-                float incomingBsdfResult = pBsdf->evaluateSA(incoming,
+                // Get the next position
+                Point nextPosition;
+                bool nextVertInEyepath = v_idx + 1 <= eVertIdx;
+                size_t local_next_v_idx = nextVertInEyepath? v_idx + 1 : lVertIdx - (v_idx - eVertIdx);
+                if(nextVertInEyepath){
+                    nextPosition = *path.m_vert_position_E[local_next_v_idx];
+                }
+                else{
+                    nextPosition = *path.m_vert_position_L[local_next_v_idx];
+                }
+                // Get the incoming direction
+                Vector incoming = (position - nextPosition).normalized();    //pointing toward the surface, not away from it
+
+                //if this is a connecting vertex
+                //(if it's not, we've already grabbed the correct values above)
+                if(vertIsConnectingVert){
+                    //Evaluate material for actual outgoing and incoming directions
+                    //Get the IncomingBsdfPdf and IncomingBsdfResult for the next leg of the path
+                    incomingBsdfPdf = 0.0f;
+                    incomingBsdfResult = pBsdf->evaluateSA(incoming,
                                                              outgoing,
                                                              normal,
                                                              incomingBsdfPdf);
-
-                //if this is the connecting edge
-                    //Do we need to multiply in the geometric term?
-                    //TODO
+                }
 
                 //if incomingBsdfPdf is greater than 0
                 if(incomingBsdfPdf > 0.0f){
+                    //calculate the geometric term for this edge
+                    float geometricTerm = 1.0f;
+                    //if this is the connecting edge
+                    if(isEyeConnectingVert){
+                        //geometric term = 1/squared length of connecting edge
+                        geometricTerm = 1.0f / LtoE.length2();
+                        //Do we have to worry about angles between normals and incoming/outgoing directions?
+                    }
+
                     // Reduce lighting effect for the next bounce based on this bounce's BSDF
                     throughput *= colorModifier * matColor * incomingBsdfResult *
+                            geometricTerm *
                             (std::fabs(dot(-incoming, normal)) /
                              (incomingBsdfPdf * bsdfWeight));
                 }

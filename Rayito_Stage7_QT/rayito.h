@@ -145,10 +145,10 @@ struct PathVertexContainer
     std::vector<bool> m_vert_isDirac_L;
     //eyepath specular flags, vert_isDirac_E[max ray depth], set all to false
     std::vector<bool> m_vert_isDirac_E;
-    //lightpath PDFs with respect to Projected Solid Angle, vert_PDFPSA_L[max ray depth]
-    //std::vector<float> m_PdfPsa_L;
-    //eyepath PDFs with respect to Projected Solid Angle, vert_PDFPSA_E[max ray depth]
-    //std::vector<float> m_PdfPsa_E;
+    //lightpath PDFs with respect to Solid Angle, vert_PDFSA_L[max ray depth]
+    std::vector<float> m_PdfSa_L;
+    //eyepath PDFs with respect to Solid Angle, vert_PDFSA_E[max ray depth]
+    std::vector<float> m_PdfSa_E;
     //lightpath vertex positions, vert_position_L[max ray depth]
     std::vector<Point*> m_vert_position_L;
     //eyepath vertex positions, vert_position_E[max ray depth]
@@ -181,10 +181,10 @@ struct PathVertexContainer
     std::vector<Color*> m_vert_colorModifier_L;
     //eyepath vertex color modulator, vert_colorModifier_E[max ray depth]
     std::vector<Color*> m_vert_colorModifier_E;
-    //lightpath vertex BSDF evaluation, vert_Fs_L[max ray depth]
-    //std::vector<Color*> m_vert_Fs_L;
-    //eyepath vertex BSDF evaluation, vert_Fs_E[max ray depth]
-    //std::vector<Color*> m_vert_Fs_E;
+    //lightpath vertex BSDF evaluation, vert_BSDF_result_L[max ray depth]
+    std::vector<float> m_vert_BSDF_result_L;
+    //eyepath vertex BSDF evaluation, vert_BSDF_result_E[max ray depth]
+    std::vector<float> m_vert_BSDF_result_E;
     //vertex Alpha L sub i values, vert_Alpha_L_i[max ray depth]
     //std::vector<Color> m_alpha_i_L;
     //vertex Alpha E sub i values, vert_Alpha_E_i[max ray depth]
