@@ -86,6 +86,12 @@ protected:
                                                                                  m_pixelSamplesHint,
                                                                                  rng,
                                                                                  rng.nextUInt32()));
+            samplers.m_lightBounceSamplers.push_back(new CorrelatedMultiJitterSampler(m_pixelSamplesHint,
+                                                                                      m_pixelSamplesHint,
+                                                                                      rng,
+                                                                                      rng.nextUInt32()));
+        }
+        for(size_t i = 0; i < m_maxRayDepth * 2; i++){
             samplers.m_lightSelectionSamplers.push_back(new CorrelatedMultiJitterSampler(m_pixelSamplesHint * m_lightSamplesHint *
                                                                                          m_pixelSamplesHint * m_lightSamplesHint,
                                                                                          rng,
@@ -102,10 +108,6 @@ protected:
                                                                                m_pixelSamplesHint * m_lightSamplesHint,
                                                                                rng,
                                                                                rng.nextUInt32()));
-            samplers.m_lightBounceSamplers.push_back(new CorrelatedMultiJitterSampler(m_pixelSamplesHint,
-                                                                                      m_pixelSamplesHint,
-                                                                                      rng,
-                                                                                      rng.nextUInt32()));
         }
         // Set up samplers for russian roulette. We only need maxBounces - minBounces of them
         for(size_t i = 0; i < m_maxRayDepth - samplers.m_minRayDepth; i++){
@@ -220,11 +222,13 @@ protected:
                 for (size_t i = 0; i < m_maxRayDepth; ++i)
                 {
                     samplers.m_bounceSamplers[i]->refill(rng.nextUInt32());
+                    samplers.m_lightBounceSamplers[i]->refill(rng.nextUInt32());
+                }
+                for(size_t i = 0; i < m_maxRayDepth * 2; ++i){
                     samplers.m_lightSelectionSamplers[i]->refill(rng.nextUInt32());
                     samplers.m_lightElementSamplers[i]->refill(rng.nextUInt32());
                     samplers.m_lightSamplers[i]->refill(rng.nextUInt32());
                     samplers.m_bsdfSamplers[i]->refill(rng.nextUInt32());
-                    samplers.m_lightBounceSamplers[i]->refill(rng.nextUInt32());
                 }
                 for(size_t i = 0; i < m_maxRayDepth - samplers.m_minRayDepth; i++){
                     samplers.m_eyepathRussianRouletteSamplers[i]->refill(rng.nextUInt32());
@@ -248,11 +252,13 @@ protected:
         for (size_t i = 0; i < m_maxRayDepth; ++i)
         {
             delete samplers.m_bounceSamplers[i];
+            delete samplers.m_lightBounceSamplers[i];
+        }
+        for(size_t i = 0; i < m_maxRayDepth * 2; ++i){
             delete samplers.m_lightSelectionSamplers[i];
             delete samplers.m_lightElementSamplers[i];
             delete samplers.m_lightSamplers[i];
             delete samplers.m_bsdfSamplers[i];
-            delete samplers.m_lightBounceSamplers[i];
         }
         for(size_t i = 0; i < m_maxRayDepth - samplers.m_minRayDepth; i++){
             delete samplers.m_eyepathRussianRouletteSamplers[i];
@@ -1275,7 +1281,122 @@ Color BDpathTrace(const Ray& ray,
                     numDiracBounces++;
                 }
 
-                //Evaluate direct lighting???   //TODO: if I have time
+                //Evaluate direct lighting
+                if(!lastBounceDiracDistribution){
+                    Color lightResult = Color(0.0f, 0.0f, 0.0f);
+                    float lightSelectionWeight = float(lights.size()) / samplers.m_numLightSamples;
+                    for(size_t lightSampleIndex = 0; lightSampleIndex < samplers.m_numLightSamples; ++lightSampleIndex){
+                        // Sample lights using MIS between the light and the BSDF.
+                        // This means we ask the light for a direction, and the likelihood
+                        // of having sampled that direction (the PDF).  Then we ask the
+                        // BSDF what it thinks of that direction (its PDF), and weight
+                        // the light sample with MIS.
+                        //
+                        // Then, we ask the BSDF for a direction, and the likelihood of
+                        // having sampled that direction (the PDF).  Then we ask the
+                        // light what it thinks of that direction (its PDF, and whether
+                        // that direction even runs into the light at all), and weight
+                        // the BSDF sample with MIS.
+                        //
+                        // By doing both samples and asking both the BSDF and light for
+                        // their PDF for each one, we can combine the strengths of both
+                        // sampling methods and get the best of both worlds.  It does
+                        // cost an extra shadow ray and evaluation, though, but it is
+                        // generally such an improvement in quality that it is very much
+                        // worth the overhead.
+
+                        // Select a light randomly for this sample
+                        unsigned int finalLightSampleIndex = pixelSampleIndex * samplers.m_numLightSamples +
+                                                            lightSampleIndex;
+                        float liu = samplers.m_lightSelectionSamplers[numBounces]->sample1D(finalLightSampleIndex);
+                        size_t lightIndex = (size_t)(liu * lights.size());
+                        if(lightIndex >= lights.size())
+                            lightIndex = lights.size() - 1;
+                        Light *pLightShape = (Light*) lights[lightIndex];
+
+                        // Ask the light for a random position/normal we can use for lighting
+                        float lsu, lsv;
+                        samplers.m_lightSamplers[numBounces]->sample2D(finalLightSampleIndex, lsu, lsv);
+                        float leu = samplers.m_lightElementSamplers[numBounces]->sample1D(finalLightSampleIndex);
+                        Point lightPoint;
+                        Vector lightNormal;
+                        float lightPdf = 0.0f;
+                        pLightShape->sampleSurface(position,
+                                                   normal,
+                                                   ray.m_time,
+                                                   lsu, lsv, leu,
+                                                   lightPoint,
+                                                   lightNormal,
+                                                   lightPdf);
+
+                        if (lightPdf > 0.0f)
+                        {
+                            // Ask the BSDF what it thinks of this light position (for MIS)
+                            Vector lightIncoming = position - lightPoint;
+                            float lightDistance = lightIncoming.normalize();
+                            float bsdfPdf = 0.0f;
+                            float bsdfResult = pBsdf->evaluateSA(lightIncoming,
+                                                                 outgoing,
+                                                                 normal,
+                                                                 bsdfPdf);
+                            if (bsdfResult > 0.0f && bsdfPdf > 0.0f)
+                            {
+                                // Fire a shadow ray to make sure we can actually see the light position
+                                Ray shadowRay(position, -lightIncoming, lightDistance - kRayTMin, ray.m_time);
+                                if (!scene.doesIntersect(shadowRay))
+                                {
+                                    // The light point is visible, so let's add that
+                                    // contribution (mixed by MIS)
+                                    float misWeightLight = powerHeuristic(1, lightPdf, 1, bsdfPdf);
+                                    lightResult += pLightShape->emitted() *
+                                                   colorModifier * matColor *
+                                                   bsdfResult *
+                                                   std::fabs(dot(-lightIncoming, normal)) *
+                                                   misWeightLight / (lightPdf * bsdfWeight);
+                                }
+                            }
+                        }
+
+                        // Ask the BSDF for a sample direction
+                        float bsu, bsv;
+                        samplers.m_bsdfSamplers[numBounces]->sample2D(finalLightSampleIndex, bsu, bsv);
+                        Vector bsdfIncoming;
+                        float bsdfPdf = 0.0f;
+                        float bsdfResult = pBsdf->sampleSA(bsdfIncoming,
+                                                           outgoing,
+                                                           normal,
+                                                           bsu,
+                                                           bsv,
+                                                           bsdfPdf);
+                        if (bsdfPdf > 0.0f && bsdfResult > 0.0f)
+                        {
+                            Intersection shadowIntersection(Ray(position, -bsdfIncoming, kRayTMax, ray.m_time));
+                            bool intersected = scene.intersect(shadowIntersection);
+                            if (intersected && shadowIntersection.m_pShape == pLightShape)
+                            {
+                                // Ask the light what it thinks of this direction (for MIS)
+                                lightPdf = pLightShape->intersectPdf(shadowIntersection);
+                                if (lightPdf > 0.0f)
+                                {
+                                    // BSDF chose the light, so let's add that
+                                    // contribution (mixed by MIS)
+                                    float misWeightBsdf = powerHeuristic(1, bsdfPdf, 1, lightPdf);
+                                    lightResult += pLightShape->emitted() *
+                                                   colorModifier * matColor * bsdfResult *
+                                                   std::fabs(dot(-bsdfIncoming, normal)) * misWeightBsdf /
+                                                   (bsdfPdf * bsdfWeight);
+                                }
+                            }
+                        }
+                    }
+
+                    // Average light samples
+                    lightResult *= samplers.m_numLightSamples > 0 ? lightSelectionWeight : 0.0f;
+
+                    // Add direct lighting at this bounce (modified by how much the
+                    // previous bounces have dimmed it)
+                    subpathResult += throughput * lightResult;
+                }
 
                 //Evaluate material for actual outgoing and incoming directions
                 //Get the IncomingBsdfPdf and IncomingBsdfResult for the next leg of the path
