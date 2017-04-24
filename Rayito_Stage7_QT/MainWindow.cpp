@@ -136,7 +136,7 @@ inline Mesh* makeCube()
     return new Mesh(vertices, normals, faces, NULL);
 }
 
-void MainWindow::on_renderButton_clicked()
+/*void MainWindow::on_renderButton_clicked()
 {
     // Make a picture...
     
@@ -242,6 +242,72 @@ void MainWindow::on_renderButton_clicked()
     // Clean up the scene and render
     delete pImage;
     delete pOBJMesh;
+}*/
+
+//Refractive/Oren-Nayar/Diffuse bunny
+void MainWindow::on_renderButton_clicked()
+{
+    // Make a picture...
+
+    // Available materials
+    DiffuseMaterial blueishLambert(Color(0.6f, 0.6f, 0.9f));
+    DiffuseMaterial purplishLambert(Color(0.8f, 0.3f, 0.7f));
+    DiffuseMaterial reddishLambert(Color(0.8f, 0.3f, 0.1f));
+    GlossyMaterial bluishGlossy(Color(0.5f, 0.3f, 0.8f), 0.3);
+    GlossyMaterial greenishGlossy(Color(0.3f, 0.9f, 0.3f), 0.1f);
+    GlossyMaterial reddishGlossy(Color(0.8f, 0.1f, 0.1f), 0.3f);
+    ReflectionMaterial reflective(Color(0.7f, 0.7f, 0.2f));
+    RefractionMaterial refractive(Color(0.1f, 0.9f, 0.2f), 1.5f);
+    DiffuseMaterial greenLambert(Color(0.1f, 0.9f, 0.2f));
+
+    // The 'scene'
+    ShapeSet masterSet;
+
+    // Put a ground plane in (with bullseye texture!)
+    // Last parameter is whether to do the bullseye texture or not
+    Plane plane(Point(), Vector(0.0f, 1.0f, 0.0f), &blueishLambert, true);
+    plane.transform().translate(0.0f, Vector(0.0f, -2.0f, 0.0f));
+    masterSet.addShape(&plane);
+
+    Mesh* pBunnyMesh = createFromOBJFile("../models/bunny_smooth_0_25.obj");
+    pBunnyMesh->setMaterial(&greenLambert);
+    masterSet.addShape(pBunnyMesh);
+
+    // Add an area light
+    RectangleLight areaLight(Point(),
+                             Vector(3.0f, 0.0f, 0.0f),
+                             Vector(0.0f, 0.0f, 3.0f),
+                             Color(1.0f, 1.0f, 1.0f),
+                             5.0f);
+    areaLight.transform().setTranslation(0.0f, Vector(-1.5f, 4.0f, -1.5f));
+    // Uncomment this to have the rect light hinge-swing downward
+//    areaLight.transform().setRotation(1.0f, Quaternion(Vector(0.0f, 0.0f, 1.0f), -M_PI / 4.0f));
+    masterSet.addShape(&areaLight);
+
+    // Create the camera based on user settings
+    PerspectiveCamera cam((float)ui->camFovSpinBox->value(),
+                          Point(-4.0f, 5.0f, 15.0f),
+                          Point(0.0f, 0.0f, 0.0f),
+                          Point(0.0f, 1.0f, 0.0f),
+                          (float)ui->focalDistanceSpinBox->value(),
+                          (float)ui->lensRadiusSpinBox->value(),
+                          (float)ui->shutterOpenSpinBox->value(),
+                          (float)ui->shutterCloseSpinBox->value());
+
+    // Ray trace!
+    Image *pImage = raytrace(masterSet,
+                             cam,
+                             (size_t)ui->widthSpinBox->value(),
+                             (size_t)ui->heightSpinBox->value(),
+                             (unsigned int)ui->pixelSamplesSpinBox->value(),
+                             (unsigned int)ui->lightSamplesSpinBox->value(),
+                             (unsigned int)ui->rayDepthSpinBox->value());
+
+    displayImage(pImage);
+
+    // Clean up the scene and render
+    delete pImage;
+    delete pBunnyMesh;
 }
 
 // Let's have some fun, and make a scene where objects fall and bounce off the
