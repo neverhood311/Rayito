@@ -286,6 +286,7 @@ inline Point kinematicPosition(const Point& start,
     return start + velocity * time + gravity * time * time * 0.5f;
 }
 
+//Suzanne lit by hidden small light
 void MainWindow::on_renderButton2_clicked(){
     // Make a picture...
 
@@ -356,6 +357,97 @@ void MainWindow::on_renderButton2_clicked(){
     delete pLightMesh_small;
     delete pLightMesh;
 }
+
+/*//Cathedral
+void MainWindow::on_renderButton2_clicked(){
+    //Materials
+    DiffuseMaterial whiteLambert(Color(0.9f, 0.9f, 0.9f));
+
+    //The Scene
+    ShapeSet masterSet;
+
+    //Add the cathedral
+    Mesh* pCathedral = createFromOBJFile("../models/cathedral.obj");
+    pCathedral->setMaterial(&whiteLambert);
+    masterSet.addShape(pCathedral);
+
+    //Add the lights
+    Mesh* pLights = createFromOBJFile("../models/cathedral_lights.obj");
+    ShapeLight meshLight(pLights, Color(1.0f, 1.0f, 1.0f), 100.0f);
+    masterSet.addShape(&meshLight);
+
+    //Set up the camera
+    PerspectiveCamera cam((float)ui->camFovSpinBox->value(),
+                          Point(-16.69968f, -0.03663f, -12.47947f),
+                          Point(0.0f, 0.0f, -9.50275f),
+                          Point(0.0f, 0.0f, 1.0f),
+                          (float)ui->focalDistanceSpinBox->value(),
+                          (float)ui->lensRadiusSpinBox->value(),
+                          (float)ui->shutterOpenSpinBox->value(),
+                          (float)ui->shutterCloseSpinBox->value());
+    //Ray trace!
+    Image *pImage = raytrace(masterSet,
+                             cam,
+                             (size_t)ui->widthSpinBox->value(),
+                             (size_t)ui->heightSpinBox->value(),
+                             (unsigned int)ui->pixelSamplesSpinBox->value(),
+                             (unsigned int)ui->lightSamplesSpinBox->value(),
+                             (unsigned int)ui->rayDepthSpinBox->value());
+    displayImage(pImage);
+    //Clean up the scene and render
+    delete pCathedral;
+    delete pLights;
+    delete pImage;
+}*/
+
+/*//Hi-poly vase and caustic light
+void MainWindow::on_renderButton2_clicked(){
+    //Materials
+    DiffuseMaterial whiteLambert(Color(0.9f, 0.9f, 0.9f));
+    RefractionMaterial greenRefractive(Color(0.1f, 0.9f, 0.3f), 1.5f);
+
+    //The Scene
+    ShapeSet masterSet;
+
+    //Add the ground plane (just an infinite one)
+    Plane plane(Point(), Vector(0.0f, 1.0f, 0.0f), &whiteLambert, false);
+    masterSet.addShape(&plane);
+
+    //Add the vase
+    Mesh* pVase = createFromOBJFile("../models/Vase.obj");
+    pVase->setMaterial(&greenRefractive);
+    masterSet.addShape(pVase);
+    //Add the small light source
+    Mesh* pSmallLight = createFromOBJFile("../models/Vase_light.obj");
+    pSmallLight->setMaterial(&whiteLambert);
+    ShapeLight meshLight(pSmallLight, Color(1.0f, 1.0f, 1.0f), 1000.0f);
+    masterSet.addShape(&meshLight);
+
+    //Setup the camera
+    PerspectiveCamera cam((float)ui->camFovSpinBox->value(),
+                          Point(-3.53689f, 5.16898f, 8.5884f),
+                          Point(-2.0f, 1.0f, 0.0f),
+                          Point(0.0f, 1.0f, 0.0f),
+                          (float)ui->focalDistanceSpinBox->value(),
+                          (float)ui->lensRadiusSpinBox->value(),
+                          (float)ui->shutterOpenSpinBox->value(),
+                          (float)ui->shutterCloseSpinBox->value());
+
+    //Ray trace!
+    Image *pImage = raytrace(masterSet,
+                             cam,
+                             (size_t)ui->widthSpinBox->value(),
+                             (size_t)ui->heightSpinBox->value(),
+                             (unsigned int)ui->pixelSamplesSpinBox->value(),
+                             (unsigned int)ui->lightSamplesSpinBox->value(),
+                             (unsigned int)ui->rayDepthSpinBox->value());
+    displayImage(pImage);
+
+    //Clean up the scene and render
+    delete pImage;
+    delete pVase;
+    delete pSmallLight;
+}(/
 
 /*void MainWindow::on_renderButton2_clicked_old()
 {

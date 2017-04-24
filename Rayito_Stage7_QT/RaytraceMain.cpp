@@ -172,6 +172,8 @@ protected:
             path.m_PdfSa_E.push_back(0.0f);
             path.m_vert_BSDF_result_L.push_back(1.0f);
             path.m_vert_BSDF_result_E.push_back(1.0f);
+            path.m_vert_outdir_L.push_back(new Vector(0.0f));
+            path.m_vert_outdir_E.push_back(new Vector(0.0f));
         }
 
         // For each pixel row...
@@ -180,7 +182,7 @@ protected:
             // For each pixel across the row...
             for (size_t x = m_xstart; x < m_xend; ++x)
             {
-                if(x == 224 && y == 348){
+                /*if(x == 224 && y == 348){
                     //perfect reflection towards background
                     int one = 0;
                     one++;
@@ -200,7 +202,7 @@ protected:
                     //hit the light source first
                     int one = 0;
                     one++;
-                }
+                }*/
                 // Accumulate pixel color
                 Color pixelColor(0.0f, 0.0f, 0.0f);
                 // For each sample in the pixel...
@@ -311,6 +313,8 @@ protected:
             delete path.m_vert_matColor_E[i];
             delete path.m_vert_colorModifier_L[i];
             delete path.m_vert_colorModifier_E[i];
+            delete path.m_vert_outdir_L[i];
+            delete path.m_vert_outdir_E[i];
         }
     }
     
@@ -1017,6 +1021,18 @@ Color BDpathTrace(const Ray& ray,
     size_t nE = 1;
     bool lastBounceDiracDistribution = false;
     while(numBounces < samplers.m_maxRayDepth){
+        //If we've gotten past our minimum depth, do Russian Roulette
+        if(numBounces > samplers.m_minRayDepth){
+            //get the maximum component of the eye throughput
+            float maxComp = std::max(std::max(throughput.m_r, throughput.m_g), throughput.m_b);
+            //get a random number
+            float rrSample = samplers.m_eyepathRussianRouletteSamplers[numBounces - samplers.m_minRayDepth]->sample1D(pixelSampleIndex);
+            //if the random number is greater than the max component
+            if(rrSample > maxComp){
+                //kill the path here
+                break;
+            }
+        }
         // Trace the ray to see if we hit anything
         Intersection intersection(currentRay);
         //if not
@@ -1036,7 +1052,7 @@ Color BDpathTrace(const Ray& ray,
         //store the normal
         Vector normal = *path.m_vert_normal_E[nE] = intersection.m_normal;
         //store the outgoing direction
-        Vector outgoing = -currentRay.m_direction;
+        Vector outgoing = *path.m_vert_outdir_E[nE] = -currentRay.m_direction;
         //store the Bsdf
         Bsdf* pBsdf = NULL;
         float bsdfWeight = 1.0f;
@@ -1134,17 +1150,33 @@ Color BDpathTrace(const Ray& ray,
 
     *path.m_vert_position_L[0] = bd_lightPoint;
     path.m_vert_pShape_L[0] = pBDLightShape;
-    //Bsdf* pBsdf = pBDLightShape->m
+    //store the initial outgoing direction
+    *path.m_vert_outdir_L[0] = bd_outgoing;
 
     //Create a ray using the light's position and direction
     currentRay.m_origin = bd_lightPoint;
     currentRay.m_direction = bd_outgoing;
     currentRay.m_tMax = kRayTMax;
 
+    //reset the throughput
+    throughput = Color(1.0f, 1.0f, 1.0f);
+
     numBounces = 0;
     size_t nL = 1;
     //While we have light bounces left
     while(numBounces < samplers.m_maxRayDepth){
+        //If we've gotten past our minimum depth, do Russian Roulette
+        if(numBounces > samplers.m_minRayDepth){
+            //get the maximum component of the eye throughput
+            float maxComp = std::max(std::max(throughput.m_r, throughput.m_g), throughput.m_b);
+            //get a random number
+            float rrSample = samplers.m_lightpathRussianRouletteSamplers[numBounces - samplers.m_minRayDepth]->sample1D(pixelSampleIndex);
+            //if the random number is greater than the max component
+            if(rrSample > maxComp){
+                //kill the path here
+                break;
+            }
+        }
         //Trace the ray to see if we hit anything
         Intersection intersection(currentRay);
         //if not
@@ -1163,7 +1195,7 @@ Color BDpathTrace(const Ray& ray,
         Bsdf* pBsdf = NULL;
         float bsdfWeight = 1.0f;
         //store the material color and color modulator
-        *path.m_vert_matColor_L[nL] = intersection.m_pMaterial->evaluate(position,
+        Color matColor = *path.m_vert_matColor_L[nL] = intersection.m_pMaterial->evaluate(position,
                                                                           normal,
                                                                           outgoing,
                                                                           pBsdf,
@@ -1200,6 +1232,12 @@ Color BDpathTrace(const Ray& ray,
             currentRay.m_origin = position;
             currentRay.m_direction = -incoming;
             currentRay.m_tMax = kRayTMax;
+            //store "-incoming" as this vertex's outgoing direction
+            *path.m_vert_outdir_L[nL] = -incoming;
+            // Reduce lighting effect for the next bounce based on this bounce's BSDF
+            throughput *= intersection.m_colorModifier * matColor * incomingBsdfResult *
+                    (std::fabs(dot(-incoming, normal)) /
+                     (incomingBsdfPdf * bsdfWeight));
         }
         else{
             break;  //BSDF is zero, stop bouncing
@@ -1283,6 +1321,8 @@ Color BDpathTrace(const Ray& ray,
                 bool isDirac;
                 float incomingBsdfPdf;
                 float incomingBsdfResult;
+                Vector outgoing;
+                Vector incoming;
                 if(vertInEyepath){
                     position =          *path.m_vert_position_E[local_v_idx];
                     normal =            *path.m_vert_normal_E[local_v_idx];
@@ -1295,6 +1335,7 @@ Color BDpathTrace(const Ray& ray,
                     isDirac =           path.m_vert_isDirac_E[local_v_idx];
                     incomingBsdfPdf =   path.m_PdfSa_E[local_v_idx];
                     incomingBsdfResult =path.m_vert_BSDF_result_E[local_v_idx];
+                    outgoing =          *path.m_vert_outdir_E[local_v_idx];
                 }
                 else{
                     position =          *path.m_vert_position_L[local_v_idx];
@@ -1308,9 +1349,13 @@ Color BDpathTrace(const Ray& ray,
                     isDirac =           path.m_vert_isDirac_L[local_v_idx];
                     incomingBsdfPdf =   path.m_PdfSa_L[local_v_idx];
                     incomingBsdfResult =path.m_vert_BSDF_result_L[local_v_idx];
+                    outgoing =          *path.m_vert_outdir_L[local_v_idx];
                 }
-                //Get the outgoing direction
-                Vector outgoing = (prevPosition - position).normalized();
+                //if this is the lightpath connecting vertex
+                if(isLightConnectingVert){
+                    //the outgoing direction is LtoEDir
+                    outgoing = LtoEDir;
+                }
                 // No BSDF? We can't evaluate lighting, so bail
                 if(pBsdf == NULL){
                     break;
@@ -1450,14 +1495,25 @@ Color BDpathTrace(const Ray& ray,
                 Point nextPosition;
                 bool nextVertInEyepath = v_idx + 1 <= eVertIdx;
                 size_t local_next_v_idx = nextVertInEyepath? v_idx + 1 : lVertIdx - (v_idx - eVertIdx);
-                if(nextVertInEyepath){
-                    nextPosition = *path.m_vert_position_E[local_next_v_idx];
+                //if this is the eyepath connecting vertex
+                if(isEyeConnectingVert){
+                    //incoming direction is LtoEDir
+                    incoming = LtoEDir;
                 }
+                //if this and the next vertex are in the eyepath
+                else if(vertInEyepath && nextVertInEyepath){
+                    //nextPosition = *path.m_vert_position_E[local_next_v_idx];
+                    //incoming is the outgoing direction of the next vertex
+                    incoming = *path.m_vert_outdir_E[local_next_v_idx];
+                }
+                //otherwise, it's in the lightpath
                 else{
-                    nextPosition = *path.m_vert_position_L[local_next_v_idx];
+                    //nextPosition = *path.m_vert_position_L[local_next_v_idx];
+                    //its incoming direction is simply the next vertex's outgoing direction
+                    incoming = *path.m_vert_outdir_L[local_next_v_idx];
                 }
                 // Get the incoming direction
-                Vector incoming = (position - nextPosition).normalized();    //pointing toward the surface, not away from it
+                //Vector incoming = (position - nextPosition).normalized();    //pointing toward the surface, not away from it
 
                 //if this is a connecting vertex
                 //(if it's not, we've already grabbed the correct values above)
@@ -1476,11 +1532,11 @@ Color BDpathTrace(const Ray& ray,
                     //calculate the geometric term for this edge
                     float geometricTerm = 1.0f;
                     //if this is the connecting edge
-                    if(isEyeConnectingVert){
+                    /*if(isEyeConnectingVert){
                         //geometric term = 1/squared length of connecting edge
                         geometricTerm = 1.0f / LtoE.length2();
                         //Do we have to worry about angles between normals and incoming/outgoing directions?
-                    }
+                    }*/
 
                     // Reduce lighting effect for the next bounce based on this bounce's BSDF
                     throughput *= colorModifier * matColor * incomingBsdfResult *

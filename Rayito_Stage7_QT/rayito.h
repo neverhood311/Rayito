@@ -158,9 +158,9 @@ struct PathVertexContainer
     //eyepath vertex normals, vert_normal_E[max ray depth]
     std::vector<Vector*> m_vert_normal_E;
     //lightpath vertex outgoing ray direction, vert_outdir_L[max ray depth]
-    //std::vector<Vector*> m_outdir_L;
+    std::vector<Vector*> m_vert_outdir_L;
     //eyepath vertex outgoing ray direction, vert_outdir_E[max ray depth]
-    //std::vector<Vector*> m_outdir_E;
+    std::vector<Vector*> m_vert_outdir_E;
     //lightpath vertex BSDFs, vert_BSDF_L[max ray depth]
     std::vector<Bsdf*> m_vert_BSDF_L;
     //eyepath vertex BSDFs, vert_BSDF_E[max ray depth]
@@ -185,27 +185,10 @@ struct PathVertexContainer
     std::vector<float> m_vert_BSDF_result_L;
     //eyepath vertex BSDF evaluation, vert_BSDF_result_E[max ray depth]
     std::vector<float> m_vert_BSDF_result_E;
-    //vertex Alpha L sub i values, vert_Alpha_L_i[max ray depth]
-    //std::vector<Color> m_alpha_i_L;
-    //vertex Alpha E sub i values, vert_Alpha_E_i[max ray depth]
-    //std::vector<Color> m_alpha_i_E;
-    //lightpath vertex probability with respect to surface area, vert_PA_L[max ray depth]
-    //std::vector<float> m_vert_PA_L;
-    //eyepath vertex probability with respect to surface area, vert_PA_E[max ray depth]
-    //std::vector<float> m_vert_PA_E;
     //lightpath vertex BSDF weight, vert_BSDF_weight_L[max ray depth]
     std::vector<float> m_vert_BSDF_weight_L;
     //eyepath vertex BSDF weight, vert_BSDF_weight_E[max ray depth]
     std::vector<float> m_vert_BSDF_weight_E;
-
-    //combined path outgoing ray directions, xst_outdir[max ray depth * 2]
-    //std::vector<Vector> m_xst_outdir;
-    //combined path Geometric terms, xst_GeoTerm[max ray depth * 2]
-    //std::vector<float> m_xst_GeoTerm;
-    //combined path Bsdfs, xst_Bsdf[max ray depth * 2]
-    //std::vector<Bsdf*> m_xst_Bsdf;
-    //combined path normals, xst_normal[max ray depth * 2]
-    //std::vector<Vector> m_xst_normal;
 };
 
 //
